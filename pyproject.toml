@@ -37,6 +37,7 @@ slowapi = "^0.1.9"
 casbin-sqlalchemy-adapter = "^0.1.0"
 fastapi-mail = "^1.4.1"
 jinja2 = "^3.1.4"
+sqlalchemy = "^2.0.41"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

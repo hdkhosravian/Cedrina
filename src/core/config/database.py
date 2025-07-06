@@ -38,6 +38,7 @@ class DatabaseSettings(BaseSettings):
     POSTGRES_MAX_OVERFLOW: int = Field(ge=0, default=20)
     POSTGRES_POOL_TIMEOUT: float = Field(ge=1.0, default=5.0)
     DATABASE_URL: str = ""
+    TEST_DATABASE_URL: str = ""
     PGCRYPTO_KEY: SecretStr
 
     @field_validator("DATABASE_URL", mode="before")
@@ -68,4 +69,19 @@ class DatabaseSettings(BaseSettings):
             f"{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
         )
         logger.debug("Assembled DATABASE_URL (password masked for " "security).")
+        return url
+
+    @field_validator("TEST_DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_test_db_url(cls, v: str | None, info: ValidationInfo) -> str:
+        if v:
+            return v
+
+        values = info.data
+        password = values.get("POSTGRES_PASSWORD")
+        url = (
+            f"postgresql+psycopg2://{values.get('POSTGRES_USER')}:"
+            f"{password}@{values.get('POSTGRES_HOST')}:"
+            f"{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB_TEST')}"
+        )
         return url
