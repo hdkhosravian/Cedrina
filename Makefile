@@ -68,9 +68,9 @@ db-migrate:
 		alembic upgrade head || { echo 'Error: Migration failed for $$POSTGRES_DB'; exit 1; }"
 	@if [ "$(APP_ENV)" = "development" ]; then \
 		echo "Applying migrations for test database..."; \
-		poetry run bash -c "$(CMD_PREFIX) \
-			TEST_DB_URL=postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB_TEST?sslmode=$$POSTGRES_SSL_MODE; \
-			export DATABASE_URL=$$TEST_DB_URL; \
+		poetry run bash -c "set -a; . .env; export PYTHONPATH=$$PWD; \
+			unset DATABASE_URL; \
+			export DATABASE_URL=postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB_TEST?sslmode=$$POSTGRES_SSL_MODE; \
 			alembic upgrade head || { echo 'Error: Migration failed for $$POSTGRES_DB_TEST'; exit 1; }"; \
 	fi
 
@@ -80,9 +80,9 @@ db-rollback:
 		alembic downgrade -1 || { echo 'Error: Rollback failed for $$POSTGRES_DB'; exit 1; }"
 	@if [ "$(APP_ENV)" = "development" ]; then \
 		echo "Rolling back test database migration..."; \
-		poetry run bash -c "$(CMD_PREFIX) \
-			TEST_DB_URL=postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB_TEST?sslmode=$$POSTGRES_SSL_MODE; \
-			export DATABASE_URL=$$TEST_DB_URL; \
+		poetry run bash -c "set -a; . .env; export PYTHONPATH=$$PWD; \
+			unset DATABASE_URL; \
+			export DATABASE_URL=postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB_TEST?sslmode=$$POSTGRES_SSL_MODE; \
 			alembic downgrade -1 || { echo 'Error: Rollback failed for $$POSTGRES_DB_TEST'; exit 1; }"; \
 	fi
 
