@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Request, status
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
-    CleanEmailConfirmationRequestService,
+    get_email_confirmation_request_service,
 )
 from src.adapters.api.v1.auth.schemas.requests import ResendConfirmationRequest
 from src.adapters.api.v1.auth.schemas import MessageResponse
@@ -16,7 +16,7 @@ router = APIRouter()
 async def resend_confirmation(
     request: Request,
     payload: ResendConfirmationRequest,
-    service=Depends(CleanEmailConfirmationRequestService),
+    service=Depends(get_email_confirmation_request_service),
 ):
     """Resend a confirmation email to the provided address if necessary."""
 

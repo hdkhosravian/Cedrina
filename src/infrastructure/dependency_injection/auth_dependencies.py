@@ -62,7 +62,7 @@ from src.domain.services.password_reset.password_reset_service import (
 from src.core.rate_limiting.password_reset_service import (
     RateLimitingService,
 )
-from src.infrastructure.database.async_db import get_async_db
+from src.infrastructure.database.async_db import get_async_db_dependency
 from src.infrastructure.redis import get_redis
 from src.infrastructure.repositories.user_repository import UserRepository
 from src.infrastructure.services.event_publisher import InMemoryEventPublisher
@@ -90,7 +90,7 @@ from src.infrastructure.services.token_service_adapter import TokenServiceAdapte
 # Type aliases for dependency injection
 # ---------------------------------------------------------------------------
 
-AsyncDB = Annotated[AsyncSession, Depends(get_async_db)]
+AsyncDB = Annotated[AsyncSession, Depends(get_async_db_dependency)]
 RedisClient = Annotated[Redis, Depends(get_redis)]
 
 # ---------------------------------------------------------------------------
@@ -492,23 +492,3 @@ def get_password_reset_service(
         token_service=token_service,
         event_publisher=event_publisher,
     )
-
-
-# ---------------------------------------------------------------------------
-# Convenience Aliases for Clean Architecture
-# ---------------------------------------------------------------------------
-
-# Infrastructure layer dependencies
-CleanUserRepository = Annotated[IUserRepository, Depends(get_user_repository)]
-CleanEventPublisher = Annotated[IEventPublisher, Depends(get_event_publisher)]
-CleanTokenService = Annotated[ITokenService, Depends(get_token_service)]
-
-# Domain service dependencies
-CleanAuthService = Annotated[IUserAuthenticationService, Depends(get_user_authentication_service)]
-CleanRegistrationService = Annotated[IUserRegistrationService, Depends(get_user_registration_service)]
-CleanOAuthService = Annotated[IOAuthService, Depends(get_oauth_service)]
-CleanPasswordChangeService = Annotated[IPasswordChangeService, Depends(get_password_change_service)]
-CleanPasswordResetRequestService = Annotated[PasswordResetRequestService, Depends(get_password_reset_request_service)]
-CleanPasswordResetService = Annotated[PasswordResetService, Depends(get_password_reset_service)]
-CleanEmailConfirmationRequestService = Annotated[EmailConfirmationRequestService, Depends(get_email_confirmation_request_service)]
-CleanEmailConfirmationService = Annotated[EmailConfirmationService, Depends(get_email_confirmation_service)]

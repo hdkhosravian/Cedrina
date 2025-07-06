@@ -138,13 +138,13 @@ class OAuthService:
             raise AuthenticationError(get_translated_message("invalid_oauth_user_info", "en"))
 
         # Check for existing OAuth profile
-        oauth_profile = await self.db_session.exec(
+        result = await self.db_session.execute(
             select(OAuthProfile).where(
                 OAuthProfile.provider == Provider(provider),
                 OAuthProfile.provider_user_id == provider_user_id,
             )
         )
-        oauth_profile = oauth_profile.first()
+        oauth_profile = result.scalars().first()
 
         if oauth_profile:
             user = await self.db_session.get(User, oauth_profile.user_id)
@@ -152,8 +152,8 @@ class OAuthService:
                 raise AuthenticationError(get_translated_message("user_account_inactive", "en"))
         else:
             # Create or link user
-            user = await self.db_session.exec(select(User).where(User.email == email))
-            user = user.first()
+            result = await self.db_session.execute(select(User).where(User.email == email))
+            user = result.scalars().first()
             if not user:
                 user = User(
                     username=f"{provider}_{provider_user_id[:10]}",

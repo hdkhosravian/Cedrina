@@ -21,6 +21,7 @@ from src.core.config.settings import settings
 from src.domain.entities.user import User
 from src.infrastructure.services.authentication.token import TokenService
 from src.main import app
+from src.infrastructure.database.async_db import get_async_db_dependency
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -121,9 +122,54 @@ async def async_session():
 
 @pytest_asyncio.fixture(scope="function")
 async def async_client():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    # Ensure rate limiter is configured
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from src.main import app
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    
+    # Configure rate limiter if not already set
+    if not hasattr(app.state, 'limiter'):
+        limiter = Limiter(key_func=get_remote_address)
+        app.state.limiter = limiter
+    
+    # Disable rate limiting for tests
+    import os
+    os.environ["RATE_LIMIT_ENABLED"] = "false"
+    
+    # Create a fresh async engine and session for each test
+    db_url = getattr(settings, "TEST_DATABASE_URL", settings.DATABASE_URL)
+    if db_url.startswith("postgresql+psycopg2://"):
+        db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+    
+    # Create a new engine for each test to avoid connection sharing issues
+    test_engine = create_async_engine(
+        db_url, 
+        echo=False,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        # Ensure each test gets fresh connections
+        pool_size=1,
+        max_overflow=0
+    )
+    
+    # Create dependency override that creates a fresh session for each request
+    async def get_test_db():
+        async with AsyncSession(test_engine) as session:
+            yield session
+    
+    # Override the database dependency
+    app.dependency_overrides[get_async_db_dependency] = get_test_db
+    
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        # Clean up: remove the override and dispose the engine
+        if get_async_db_dependency in app.dependency_overrides:
+            del app.dependency_overrides[get_async_db_dependency]
+        await test_engine.dispose()
 
 
 @pytest.fixture(scope="function")

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
 from src.core.config.settings import settings
+from src.core.rate_limiting.ratelimiter import get_limiter
 from src.utils.i18n import get_request_language
 
 
@@ -19,6 +20,10 @@ def configure_middleware(app: FastAPI) -> None:
     Args:
         app (FastAPI): The FastAPI application instance
     """
+    # Initialize and attach the rate limiter to app state
+    # This must be done before adding the SlowAPIMiddleware
+    app.state.limiter = get_limiter()
+    
     # CORS middleware configuration
     app.add_middleware(
         CORSMiddleware,

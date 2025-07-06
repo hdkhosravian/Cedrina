@@ -21,8 +21,8 @@ import structlog
 from fastapi import APIRouter, Depends, Request, status
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
-    CleanRegistrationService,
-    CleanTokenService,
+    get_user_registration_service,
+    get_token_service,
 )
 from src.adapters.api.v1.auth.schemas import AuthResponse, RegisterRequest, UserOut
 from src.core.exceptions import AuthenticationError
@@ -49,8 +49,8 @@ router = APIRouter()
 async def register_user(
     request: Request,
     payload: RegisterRequest,
-    registration_service: IUserRegistrationService = Depends(CleanRegistrationService),
-    token_service: ITokenService = Depends(CleanTokenService),
+    registration_service: IUserRegistrationService = Depends(get_user_registration_service),
+    token_service: ITokenService = Depends(get_token_service),
 ):
     """Register a new user with the provided credentials using clean architecture.
 
@@ -107,7 +107,7 @@ async def register_user(
     try:
         # Create domain value objects with validation
         username = Username.create_safe(payload.username)
-        email = Email.create_normalized(payload.email)
+        email = Email(payload.email)  # Email normalizes automatically in __post_init__
         password = Password(payload.password)
         
         # Extract language from request for I18N
@@ -126,7 +126,7 @@ async def register_user(
             email=email,
             password=password,
             language=language,
-            client_ip=client_ip,
+            ip_address=client_ip,
             user_agent=user_agent,
             correlation_id=correlation_id,
         )
@@ -169,6 +169,9 @@ async def register_user(
         )
         
     except ValueError as e:
+        # Extract language from request for I18N (in case it wasn't set above)
+        language = get_request_language(request)
+        
         # Handle value object validation errors with standardized response
         request_logger.warning(
             "Registration failed - invalid input format",
@@ -189,6 +192,9 @@ async def register_user(
         raise AuthenticationError(message=standardized_response["detail"])
         
     except AuthenticationError as e:
+        # Extract language from request for I18N (in case it wasn't set above)
+        language = get_request_language(request)
+        
         # Handle domain registration errors with enhanced logging
         request_logger.warning(
             "Registration failed - enhanced domain error",
@@ -201,6 +207,9 @@ async def register_user(
         raise  # Re-raise to maintain proper HTTP status codes
         
     except Exception as e:
+        # Extract language from request for I18N (in case it wasn't set above)
+        language = get_request_language(request)
+        
         # Handle unexpected errors with enhanced security logging
         request_logger.error(
             "Registration failed - unexpected error",

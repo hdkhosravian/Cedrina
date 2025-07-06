@@ -31,8 +31,8 @@ import structlog
 from fastapi import APIRouter, Depends, Request, status
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
-    CleanOAuthService,
-    CleanTokenService,
+    get_oauth_service,
+    get_token_service,
 )
 from src.adapters.api.v1.auth.schemas import OAuthAuthResponse, OAuthAuthenticateRequest, UserOut
 from src.core.exceptions import AuthenticationError
@@ -63,8 +63,8 @@ router = APIRouter()
 async def oauth_authenticate(
     request: Request,
     payload: OAuthAuthenticateRequest,
-    oauth_service: IOAuthService = Depends(CleanOAuthService),
-    token_service: ITokenService = Depends(CleanTokenService),
+    oauth_service: IOAuthService = Depends(get_oauth_service),
+    token_service: ITokenService = Depends(get_token_service),
 ):
     """Authenticate a user using an OAuth token from an external provider using DDD principles.
 

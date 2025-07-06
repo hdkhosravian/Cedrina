@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
-    CleanEmailConfirmationService,
+    get_email_confirmation_service,
 )
 from src.adapters.api.v1.auth.schemas import MessageResponse
 from src.core.exceptions import AuthenticationError, UserNotFoundError
@@ -16,7 +16,7 @@ router = APIRouter()
 async def confirm_email(
     request: Request,
     token: str = Query(...),
-    service=Depends(CleanEmailConfirmationService),
+    service=Depends(get_email_confirmation_service),
 ):
     """Validate the token and activate the user's account."""
 

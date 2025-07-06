@@ -110,6 +110,12 @@ class EmailSettings(BaseSettings):
         description="Enable test mode (emails logged instead of sent)"
     )
     
+    # Email Confirmation Configuration
+    EMAIL_CONFIRMATION_ENABLED: bool = Field(
+        default=False,
+        description="Enable email confirmation requirement for user registration"
+    )
+    
     def validate_smtp_config(self) -> None:
         """Validate SMTP configuration for production use.
         

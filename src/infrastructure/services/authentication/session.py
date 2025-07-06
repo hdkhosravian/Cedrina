@@ -79,8 +79,8 @@ class SessionService:
             user_id=user_id,
             jti=jti,
             refresh_token_hash=refresh_token_hash,
-            expires_at=expires_at,
-            last_activity_at=current_time,
+            expires_at=expires_at.replace(tzinfo=None),  # Store as naive datetime
+            last_activity_at=current_time.replace(tzinfo=None),  # Store as naive datetime
         )
 
         # Store in both Redis and PostgreSQL with consistency check
@@ -147,14 +147,18 @@ class SessionService:
             await logger.adebug("Session revoked", jti=jti, user_id=user_id)
             return False
 
+        current_time = datetime.now(timezone.utc)
+        # Database timestamps are naive, so we need to compare with naive datetime
+        current_time_naive = current_time.replace(tzinfo=None)
+        
         # Check if session is expired
-        if session.expires_at < datetime.now(timezone.utc):
+        if session.expires_at < current_time_naive:
             await logger.adebug("Session expired", jti=jti, user_id=user_id)
             return False
 
         # Check inactivity timeout
         inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
-        if session.last_activity_at + inactivity_timeout < datetime.now(timezone.utc):
+        if session.last_activity_at + inactivity_timeout < current_time_naive:
             await logger.ainfo(
                 "Session expired due to inactivity",
                 jti=jti,
@@ -164,8 +168,8 @@ class SessionService:
             await self.revoke_session(jti, user_id, "en")
             return False
 
-        # Update activity timestamp
-        session.last_activity_at = datetime.now(timezone.utc)
+        # Update activity timestamp (store as naive datetime)
+        session.last_activity_at = current_time_naive
         self.db_session.add(session)
         await self.db_session.commit()
 
@@ -204,7 +208,7 @@ class SessionService:
             )
 
         # Mark session as revoked
-        session.revoked_at = datetime.now(timezone.utc)
+        session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)  # Store as naive datetime
         self.db_session.add(session)
 
         # Immediate access token blacklisting
@@ -230,10 +234,10 @@ class SessionService:
             Optional[Session]: Session entity or None if not found.
 
         """
-        session = await self.db_session.exec(
+        result = await self.db_session.execute(
             select(Session).where(Session.jti == jti, Session.user_id == user_id)
         )
-        return session.first()
+        return result.scalars().first()
 
     async def is_session_valid(self, jti: str, user_id: int) -> bool:
         """Check if a session is valid with comprehensive validation.
@@ -262,13 +266,17 @@ class SessionService:
             await logger.adebug("Session revoked", jti=jti, user_id=user_id)
             return False
 
-        if session.expires_at < datetime.now(timezone.utc):
+        current_time = datetime.now(timezone.utc)
+        # Database timestamps are naive, so we need to compare with naive datetime
+        current_time_naive = current_time.replace(tzinfo=None)
+        
+        if session.expires_at < current_time_naive:
             await logger.adebug("Session expired", jti=jti, user_id=user_id)
             return False
 
         # Check inactivity timeout
         inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
-        if session.last_activity_at + inactivity_timeout < datetime.now(timezone.utc):
+        if session.last_activity_at + inactivity_timeout < current_time_naive:
             await logger.ainfo(
                 "Session expired due to inactivity",
                 jti=jti,
@@ -321,17 +329,24 @@ class SessionService:
             List[Session]: List of active sessions.
 
         """
-        sessions = await self.db_session.exec(
+        current_time = datetime.now(timezone.utc)
+        inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        
+        # Convert timezone-aware datetime to naive datetime for database query
+        # Database columns are TIMESTAMP WITHOUT TIME ZONE
+        current_time_naive = current_time.replace(tzinfo=None)
+        
+        result = await self.db_session.execute(
             select(Session).where(
                 and_(
                     Session.user_id == user_id,
                     Session.revoked_at.is_(None),
-                    Session.expires_at > datetime.now(timezone.utc),
-                    Session.last_activity_at + timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES) > datetime.now(timezone.utc),
+                    Session.expires_at > current_time_naive,
+                    Session.last_activity_at + inactivity_timeout > current_time_naive,
                 )
             )
         )
-        return sessions.all()
+        return list(result.scalars().all())
 
     async def cleanup_expired_sessions(self) -> int:
         """Clean up expired and inactive sessions.
@@ -345,19 +360,25 @@ class SessionService:
             int: Number of sessions cleaned up.
 
         """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        current_time = datetime.now(timezone.utc)
+        cutoff_time = current_time - timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        
+        # Convert timezone-aware datetime to naive datetime for database query
+        # Database columns are TIMESTAMP WITHOUT TIME ZONE
+        current_time_naive = current_time.replace(tzinfo=None)
+        cutoff_time_naive = cutoff_time.replace(tzinfo=None)
         
         # Find sessions to cleanup
-        sessions_to_cleanup = await self.db_session.exec(
+        result = await self.db_session.execute(
             select(Session).where(
                 or_(
-                    Session.expires_at < datetime.now(timezone.utc),
-                    Session.last_activity_at < cutoff_time,
+                    Session.expires_at < current_time_naive,
+                    Session.last_activity_at < cutoff_time_naive,
                     Session.revoked_at.is_not(None),
                 )
             )
         )
-        sessions = sessions_to_cleanup.all()
+        sessions = list(result.scalars().all())
         
         if not sessions:
             return 0

@@ -139,7 +139,7 @@ class UserRegistrationService(IUserRegistrationService):
             user = User(
                 username=str(username),
                 email=str(email),
-                hashed_password=str(hashed_password),
+                hashed_password=hashed_password.value,
                 role=role,
                 is_active=not settings.EMAIL_CONFIRMATION_ENABLED,
                 email_confirmed=not settings.EMAIL_CONFIRMATION_ENABLED,

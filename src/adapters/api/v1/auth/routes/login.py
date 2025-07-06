@@ -36,8 +36,8 @@ import structlog
 from fastapi import APIRouter, Depends, Request, status
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
-    CleanAuthService,
-    CleanTokenService,
+    get_user_authentication_service,
+    get_token_service,
 )
 from src.adapters.api.v1.auth.schemas import AuthResponse, LoginRequest, UserOut
 from src.core.exceptions import AuthenticationError
@@ -68,8 +68,8 @@ router = APIRouter()
 async def login_user(
     request: Request,
     payload: LoginRequest,
-    auth_service: IUserAuthenticationService = Depends(CleanAuthService),
-    token_service: ITokenService = Depends(CleanTokenService),
+    auth_service: IUserAuthenticationService = Depends(get_user_authentication_service),
+    token_service: ITokenService = Depends(get_token_service),
 ):
     """Authenticate a user with username and password using DDD principles.
 
@@ -119,6 +119,9 @@ async def login_user(
     client_ip = request.client.host or "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
     
+    # Extract language from request for I18N (define early for error handling)
+    language = get_request_language(request)
+    
     # Create structured logger with correlation context and security information
     request_logger = logger.bind(
         correlation_id=correlation_id,
@@ -143,9 +146,6 @@ async def login_user(
         # is delegated to domain services
         username = Username(payload.username)
         password = Password(payload.password)
-        
-        # Extract language from request for I18N
-        language = get_request_language(request)
         
         request_logger.debug(
             "Domain value objects created successfully",

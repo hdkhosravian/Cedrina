@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Mapping, Optional
 
@@ -13,7 +14,6 @@ from src.core.config.settings import settings
 from src.core.exceptions import AuthenticationError
 from src.domain.entities.user import User
 from src.infrastructure.services.authentication.session import SessionService
-from src.domain.value_objects.jwt_token import TokenId
 from src.utils.i18n import get_translated_message
 from src.core.logging import logger
 
@@ -60,7 +60,7 @@ class TokenService:
             instead of the previous 192 bits.
         """
         # Generate enhanced secure JTI
-        token_id = TokenId.generate()
+        token_id = uuid.uuid4()
         
         payload = {
             "sub": str(user.id),
@@ -75,7 +75,7 @@ class TokenService:
             "jti": str(token_id),
         }
         token = jwt_encode(payload, settings.JWT_PRIVATE_KEY.get_secret_value(), algorithm="RS256")
-        logger.debug("Access token created", user_id=user.id, jti=token_id.mask_for_logging())
+        logger.debug("Access token created", user_id=user.id, jti=token_id)
         return token
 
     async def create_refresh_token(self, user: User, jti: Optional[str] = None) -> str:
@@ -96,11 +96,11 @@ class TokenService:
         """
         # Auto-generate a new enhanced secure JTI if the caller did not supply one
         if jti is None:
-            token_id = TokenId.generate()
+            token_id = uuid.uuid4()
             jti = str(token_id)
         else:
             # Validate provided JTI
-            token_id = TokenId(jti)
+            token_id = uuid.UUID(jti)
 
         payload = {
             "sub": str(user.id),
@@ -123,7 +123,7 @@ class TokenService:
             self.session_service.create_session(user.id, jti, refresh_token_hash, payload["exp"]),
         )
 
-        logger.debug("Refresh token created", user_id=user.id, jti=token_id.mask_for_logging())
+        logger.debug("Refresh token created", user_id=user.id, jti=token_id)
         return refresh_token
 
     async def refresh_tokens(self, refresh_token: str, language: str = "en") -> Mapping[str, str]:
@@ -190,10 +190,10 @@ class TokenService:
             await self.session_service.revoke_session(jti, user_id, language)
 
             # Create new tokens
-            new_token_id = TokenId.generate()
+            new_token_id = uuid.uuid4()
             access_token = await self.create_access_token(user)
             refresh_token = await self.create_refresh_token(user, str(new_token_id))
-            logger.info("Tokens refreshed", user_id=user_id, new_jti=new_token_id.mask_for_logging())
+            logger.info("Tokens refreshed", user_id=user_id, new_jti=new_token_id)
             return {
                 "access_token": access_token,
                 "refresh_token": refresh_token,

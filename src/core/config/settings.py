@@ -37,6 +37,31 @@ class Settings(AppSettings, DatabaseSettings, RedisSettings, AuthSettings, Email
     Usage:
         - Access settings via the singleton instance `settings` throughout the application.
     """
+    
+    EMAIL_CONFIRMATION_ENABLED: bool = False
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    @property
+    def database_url(self) -> str:
+        """
+        Construct the database URL from individual components.
+
+        Returns:
+            str: The complete database URL.
+        """
+        return self.DATABASE_URL
+
+    @property
+    def redis_url(self) -> str:
+        """
+        Construct the Redis URL from individual components.
+
+        Returns:
+            str: The complete Redis URL.
+        """
+        return self.REDIS_URL
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="allow"
