@@ -54,10 +54,11 @@ test:
 
 run-test:
 	@echo "Running tests in test environment..."
-	@poetry run bash -c "$(CMD_PREFIX) \
-		TEST_DB_URL=$$(echo \"$$DATABASE_URL\" | sed -E 's/\/[^/]+\$$/\/$$POSTGRES_DB_TEST/'); \
-		export DATABASE_URL=$$TEST_DB_URL; \
-		TEST_MODE=true pytest --cov=src --cov-report=html || { echo 'Error: Tests failed'; exit 1; }"
+	@poetry run bash -c "set -a; . .env; export PYTHONPATH=$$PWD; \
+		unset DATABASE_URL; \
+		export DATABASE_URL=postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB_TEST?sslmode=$$POSTGRES_SSL_MODE; \
+		export TEST_MODE=true; \
+		pytest --cov=src --cov-report=html || { echo 'Error: Tests failed'; exit 1; }"
 
 # --------------------
 # Database Targets
