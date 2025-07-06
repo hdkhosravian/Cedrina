@@ -85,11 +85,12 @@ class SecureUsername:
         if self._validation_result is not None:
             validation_result = self._validation_result
         else:
-        # Perform comprehensive security validation
-        validation_result = input_sanitizer_service.sanitize_username(
-            self.value, 
-            strict=True
-        )
+            # Perform comprehensive security validation
+            validation_result = input_sanitizer_service.sanitize_username(
+                self.value, 
+                strict=True
+            )
+        
         # Store validation result for audit purposes
         object.__setattr__(self, '_validation_result', validation_result)
         
