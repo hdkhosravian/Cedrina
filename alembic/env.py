@@ -24,8 +24,8 @@ from sqlmodel import SQLModel  # For metadata
 # Alembic Config object, provides access to alembic.ini
 config = context.config
 
-# Set database URL from settings for consistency with FastAPI
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Set database URL from environment variable if present, else from settings
+config.set_main_option("sqlalchemy.url", os.environ.get("DATABASE_URL", settings.DATABASE_URL))
 
 # Configure logging from alembic.ini
 if config.config_file_name is not None:
