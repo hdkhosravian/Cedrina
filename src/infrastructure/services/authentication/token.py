@@ -1,9 +1,9 @@
 import asyncio
 import hashlib
-import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any, Mapping, Optional
+from typing import Mapping, Any, Optional
 
+import jwt
 from jwt import encode as jwt_encode, decode as jwt_decode, PyJWTError
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from structlog import get_logger
 from src.core.config.settings import settings
 from src.core.exceptions import AuthenticationError
 from src.domain.entities.user import User
+from src.domain.value_objects.jwt_token import TokenId
 from src.infrastructure.services.authentication.session import SessionService
 from src.utils.i18n import get_translated_message
 from src.core.logging import logger
@@ -45,11 +46,12 @@ class TokenService:
         self.redis_client = redis_client
         self.session_service = session_service or SessionService(db_session, redis_client)
 
-    async def create_access_token(self, user: User) -> str:
+    async def create_access_token(self, user: User, jti: Optional[str] = None) -> str:
         """Create a JWT access token with enhanced security.
 
         Args:
             user (User): User for whom to create the token.
+            jti (Optional[str]): JWT ID to use. If None, generates a new one using TokenId.generate().
 
         Returns:
             str: Encoded JWT access token with enhanced JTI security.
@@ -57,10 +59,14 @@ class TokenService:
         Note:
             Uses enhanced TokenId generation for improved cryptographic security
             and collision resistance. The JTI now provides 256 bits of entropy
-            instead of the previous 192 bits.
+            in base64url format (43 characters).
         """
-        # Generate enhanced secure JTI
-        token_id = uuid.uuid4()
+        # Generate enhanced secure JTI or use provided one
+        if jti is None:
+            jti = TokenId.generate().value
+        else:
+            # Validate provided JTI format
+            TokenId(jti)  # This will raise ValueError if invalid
         
         payload = {
             "sub": str(user.id),
@@ -72,10 +78,10 @@ class TokenService:
             "exp": datetime.now(timezone.utc)
             + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
             "iat": datetime.now(timezone.utc),
-            "jti": str(token_id),
+            "jti": jti,
         }
         token = jwt_encode(payload, settings.JWT_PRIVATE_KEY.get_secret_value(), algorithm="RS256")
-        logger.debug("Access token created", user_id=user.id, jti=token_id)
+        logger.debug("Access token created", user_id=user.id, jti=jti)
         return token
 
     async def create_refresh_token(self, user: User, jti: Optional[str] = None) -> str:
@@ -96,11 +102,10 @@ class TokenService:
         """
         # Auto-generate a new enhanced secure JTI if the caller did not supply one
         if jti is None:
-            token_id = uuid.uuid4()
-            jti = str(token_id)
+            jti = TokenId.generate().value
         else:
-            # Validate provided JTI
-            token_id = uuid.UUID(jti)
+            # Validate provided JTI format
+            TokenId(jti)  # This will raise ValueError if invalid
 
         payload = {
             "sub": str(user.id),
@@ -123,7 +128,7 @@ class TokenService:
             self.session_service.create_session(user.id, jti, refresh_token_hash, payload["exp"]),
         )
 
-        logger.debug("Refresh token created", user_id=user.id, jti=token_id)
+        logger.debug("Refresh token created", user_id=user.id, jti=jti)
         return refresh_token
 
     async def refresh_tokens(self, refresh_token: str, language: str = "en") -> Mapping[str, str]:
@@ -190,9 +195,9 @@ class TokenService:
             await self.session_service.revoke_session(jti, user_id, language)
 
             # Create new tokens
-            new_token_id = uuid.uuid4()
-            access_token = await self.create_access_token(user)
-            refresh_token = await self.create_refresh_token(user, str(new_token_id))
+            new_token_id = TokenId.generate().value
+            access_token = await self.create_access_token(user, new_token_id)
+            refresh_token = await self.create_refresh_token(user, new_token_id)
             logger.info("Tokens refreshed", user_id=user_id, new_jti=new_token_id)
             return {
                 "access_token": access_token,

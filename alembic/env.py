@@ -12,7 +12,7 @@ from sqlalchemy import engine_from_config, pool  # For database connection
 from alembic import context  # For migration context
 
 # Add project root to sys.path to resolve src/ imports
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Now it's safe to import settings and models
 from src.core.config.settings import settings  # Import settings after path adjustment

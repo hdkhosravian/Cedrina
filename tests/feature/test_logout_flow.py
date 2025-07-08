@@ -192,54 +192,34 @@ def test_logout_invalid_access_token(test_client_with_mocks):
     logout_response = client.request(
         "DELETE",
         "/api/v1/auth/logout",
-        json={"refresh_token": "test_refresh_token"},
         headers={"Authorization": "Bearer invalid_access_token"},
     )
 
-    # Should return success even with invalid access token
-    assert logout_response.status_code == 200
-    assert logout_response.json()["message"] == "Logged out successfully"
+    # Should return 422 due to invalid token format
+    assert logout_response.status_code == 422
 
 
 def test_logout_payload_validation_error(test_client_with_mocks):
-    """Test logout without refresh_token in payload returns 422."""
+    """Test logout without request body succeeds following RESTful principles."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
     logout_response = client.request(
         "DELETE",
         "/api/v1/auth/logout",
-        json={},  # Missing refresh_token
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
-    assert logout_response.status_code == 422
-    # Check that validation error mentions refresh_token field
-    detail = logout_response.json()["detail"]
-    assert any("refresh_token" in str(error) for error in detail)
+    # Should succeed since we don't require request body anymore
+    assert logout_response.status_code == 200
 
 
 def test_logout_successful_token_blacklisting(test_client_with_mocks, test_user):
     """Test that logout properly blacklists the access token."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    # Create a valid refresh token for the test user
-    valid_refresh_token = jwt.encode(
-        {
-            "sub": str(test_user.id),
-            "jti": "r" * 43,
-            "exp": datetime.now(timezone.utc) + timedelta(days=7),
-            "iat": datetime.now(timezone.utc),
-            "iss": settings.JWT_ISSUER,
-            "aud": settings.JWT_AUDIENCE,
-        },
-        settings.JWT_PRIVATE_KEY.get_secret_value(),
-        algorithm="RS256",
-    )
-
     logout_response = client.request(
         "DELETE",
         "/api/v1/auth/logout",
-        json={"refresh_token": valid_refresh_token},
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
@@ -258,20 +238,6 @@ def test_logout_with_session_service_error(test_client_with_mocks, test_user):
     """Test logout behavior when session service fails."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    # Create a valid refresh token for the test user
-    valid_refresh_token = jwt.encode(
-        {
-            "sub": str(test_user.id),
-            "jti": "r" * 43,
-            "exp": datetime.now(timezone.utc) + timedelta(days=7),
-            "iat": datetime.now(timezone.utc),
-            "iss": settings.JWT_ISSUER,
-            "aud": settings.JWT_AUDIENCE,
-        },
-        settings.JWT_PRIVATE_KEY.get_secret_value(),
-        algorithm="RS256",
-    )
-
     # Make session service fail
     logout_service_mock.logout_user.side_effect = AuthenticationError(
         "Session already revoked"
@@ -280,13 +246,11 @@ def test_logout_with_session_service_error(test_client_with_mocks, test_user):
     logout_response = client.request(
         "DELETE",
         "/api/v1/auth/logout",
-        json={"refresh_token": valid_refresh_token},
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
-    # Should return success even if service fails
-    assert logout_response.status_code == 200
-    assert logout_response.json()["message"] == "Logged out successfully"
+    # Should return 401 since service fails
+    assert logout_response.status_code == 401
 
 
 def test_logout_with_user_dependency_failure(

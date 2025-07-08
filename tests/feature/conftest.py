@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,10 +50,12 @@ def client():
             )
         else:
             print("Non-admin token detected")
+            # Use unique data to avoid conflicts with other tests
+            unique = uuid.uuid4().hex[:8]
             return User(
                 id=1,
-                username="testuser",
-                email="test@example.com",
+                username=f"testuser_{unique}",
+                email=f"test{unique}@example.com",
                 hashed_password="hashed_password",
                 role=Role.USER,
                 department="IT",
@@ -101,10 +104,12 @@ async def db_session():
 
 @pytest.fixture(scope="function")
 def regular_user():
+    # Use unique data to avoid conflicts with other tests
+    unique = uuid.uuid4().hex[:8]
     user = User(
         id=1,
-        username="testuser",
-        email="test@example.com",
+        username=f"testuser_{unique}",
+        email=f"test{unique}@example.com",
         hashed_password="hashed_password",
         role=Role.USER,
         department="IT",

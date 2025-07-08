@@ -1,9 +1,7 @@
 from datetime import datetime  # For timestamp fields
 from typing import Optional  # For optional fields
-from uuid import uuid4  # For generating unique JWT IDs
 
-from sqlalchemy import DateTime, text  # For SQL expressions and explicit DateTime type
-from sqlalchemy.dialects.postgresql import UUID  # For UUID-based JWT ID
+from sqlalchemy import DateTime, String, text  # For SQL expressions and explicit DateTime type
 from sqlmodel import Column, Field, Index, SQLModel  # For ORM and table definition
 
 
@@ -20,7 +18,7 @@ class Session(SQLModel, table=True):
     Attributes:
         id: The unique identifier for the session record.
         jti: The unique JWT ID (claim 'jti'), used as the primary means of
-            revoking a specific token chain.
+            revoking a specific token chain. Now uses 43-character base64url format.
         user_id: A foreign key linking the session to the `User` aggregate root.
         refresh_token_hash: The securely hashed refresh token, preventing direct
             token exposure in the database.
@@ -40,11 +38,10 @@ class Session(SQLModel, table=True):
         description="The unique identifier for the session record.",
     )
     jti: str = Field(
-        default_factory=lambda: str(uuid4()),  # Generate UUID for JWT ID
         sa_column=Column(
-            UUID(as_uuid=False), unique=True, index=True, nullable=False
-        ),  # UUID column
-        description="Unique JWT ID (jti) for token revocation.",
+            String(43), unique=True, index=True, nullable=False
+        ),  # 43-character base64url token ID
+        description="Unique JWT ID (jti) for token revocation (43-character base64url format).",
     )
     user_id: int = Field(
         foreign_key="users.id",  # References users table

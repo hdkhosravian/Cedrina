@@ -159,7 +159,7 @@ class CircuitBreaker:
             raise
 
     async def _update_state(self, success: bool) -> None:
-        """Test helper to update the circuit breaker state based on success or failure.
+        """Update the circuit breaker state based on success or failure.
 
         Args:
             success (bool): True if the operation succeeded, False if it failed.
@@ -170,7 +170,7 @@ class CircuitBreaker:
             await self._record_failure()
 
     async def _check_state(self) -> bool:
-        """Test helper to check if a request is allowed (for test introspection)."""
+        """Check if a request is allowed."""
         return await self._allow_request()
 
 

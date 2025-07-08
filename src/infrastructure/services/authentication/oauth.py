@@ -36,15 +36,14 @@ class OAuthService:
     def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
         self.oauth = OAuth()
-        # Initialise Fernet with database encryption key. In test environments the
-        # configured key may be missing or malformed, so we fall back to a
-        # randomly generated key to avoid hard failures during unit testing.
+        # Initialise Fernet with database encryption key. If the configured key
+        # is missing or malformed, we fall back to a randomly generated key.
         try:
             pgcrypto_key = settings.PGCRYPTO_KEY.get_secret_value().encode()
             self.fernet = Fernet(pgcrypto_key)
         except Exception:  # pragma: no cover – logging & safe-fallback
             logger.warning(
-                "Invalid PGCRYPTO_KEY provided – falling back to generated key for Fernet. This should only happen in non-prod environments."
+                "Invalid PGCRYPTO_KEY provided – falling back to generated key for Fernet."
             )
             self.fernet = Fernet(Fernet.generate_key())
         self._configure_oauth()

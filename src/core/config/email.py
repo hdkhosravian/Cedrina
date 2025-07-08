@@ -104,11 +104,7 @@ class EmailSettings(BaseSettings):
         description="Maximum emails per hour per IP/user for security"
     )
     
-    # Test Configuration
-    EMAIL_TEST_MODE: bool = Field(
-        default=False,
-        description="Enable test mode (emails logged instead of sent)"
-    )
+
     
     # Email Confirmation Configuration
     EMAIL_CONFIRMATION_ENABLED: bool = Field(
@@ -122,13 +118,9 @@ class EmailSettings(BaseSettings):
         Raises:
             ValueError: If SMTP configuration is invalid or insecure
         """
-        # Skip validation in non-production or test environments
-        if self.EMAIL_TEST_MODE or getattr(self, "APP_ENV", "development") not in {"production", "staging"}:
-            return
-
         if not self.SMTP_USERNAME or not self.SMTP_PASSWORD:
             raise ValueError(
-                "SMTP_USERNAME and SMTP_PASSWORD are required in production"
+                "SMTP_USERNAME and SMTP_PASSWORD are required"
             )
         
         if not (self.SMTP_USE_TLS or self.SMTP_USE_SSL):

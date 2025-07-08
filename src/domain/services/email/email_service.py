@@ -33,7 +33,6 @@ class EmailService:
     Security features:
     - HTML escaping by default
     - Secure SMTP configuration validation
-    - Test mode for development
     - Proper error handling and logging
     
     Attributes:
@@ -57,7 +56,6 @@ class EmailService:
         
         logger.info(
             "Email service initialized",
-            test_mode=settings.EMAIL_TEST_MODE,
             smtp_host=settings.SMTP_HOST,
             templates_dir=settings.EMAIL_TEMPLATES_DIR
         )
@@ -90,14 +88,8 @@ class EmailService:
     def _setup_fastmail(self) -> None:
         """Set up FastMail for email delivery.
         
-        Configures FastMail with SMTP settings based on test/production mode.
-        In test mode, emails are logged instead of sent.
+        Configures FastMail with SMTP settings for email delivery.
         """
-        if self.settings.EMAIL_TEST_MODE:
-            # In test mode, we don't need real SMTP configuration
-            self.fastmail = None
-            logger.info("Email service in test mode - emails will be logged")
-            return
         
         try:
             config = ConnectionConfig(
@@ -107,8 +99,8 @@ class EmailService:
                 MAIL_PORT=self.settings.SMTP_PORT,
                 MAIL_SERVER=self.settings.SMTP_HOST,
                 MAIL_FROM_NAME=self.settings.FROM_NAME,
-                MAIL_TLS=self.settings.SMTP_USE_TLS,
-                MAIL_SSL=self.settings.SMTP_USE_SSL,
+                MAIL_STARTTLS=self.settings.SMTP_USE_TLS,
+                MAIL_SSL_TLS=self.settings.SMTP_USE_SSL,
                 USE_CREDENTIALS=bool(self.settings.SMTP_USERNAME and self.settings.SMTP_PASSWORD),
                 VALIDATE_CERTS=True,  # Always validate certificates for security
             )
@@ -196,19 +188,8 @@ class EmailService:
             - SMTP credentials are secure
         """
         try:
-            if self.settings.EMAIL_TEST_MODE:
-                # In test mode, log the email instead of sending
-                logger.info(
-                    "Email sent in test mode",
-                    to_email=to_email,
-                    subject=subject,
-                    html_length=len(html_content),
-                    text_length=len(text_content) if text_content else 0
-                )
-                return True
-            
             if not self.fastmail:
-                raise EmailServiceError("FastMail not configured for production mode")
+                raise EmailServiceError("FastMail not configured")
             
             message = MessageSchema(
                 subject=subject,

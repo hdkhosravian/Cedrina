@@ -82,7 +82,6 @@ class UserLogoutService(IUserLogoutService):
     async def logout_user(
         self,
         access_token: AccessToken,
-        refresh_token: RefreshToken,
         user: User,
         language: str = "en",
         client_ip: str = "",
@@ -94,8 +93,8 @@ class UserLogoutService(IUserLogoutService):
         This method implements the core logout business logic following
         Domain-Driven Design principles:
         
-        1. **Input Validation**: Uses domain value objects (AccessToken, RefreshToken)
-        2. **Business Rules**: Revokes both tokens regardless of their validity
+        1. **Input Validation**: Uses domain value objects (AccessToken)
+        2. **Business Rules**: Revokes access token to terminate session
         3. **Security Context**: Captures security-relevant information for audit
         4. **Domain Events**: Publishes events for security monitoring and audit trails
         5. **Error Handling**: Provides meaningful error messages in ubiquitous language
@@ -104,13 +103,12 @@ class UserLogoutService(IUserLogoutService):
         
         Logout Flow:
         1. Calculate session duration for audit purposes
-        2. Revoke both access and refresh tokens concurrently
+        2. Revoke access token to terminate session
         3. Publish domain event for security monitoring
         4. Log successful logout with security context
         
         Args:
             access_token: Access token value object (validated)
-            refresh_token: Refresh token value object (validated)
             user: Authenticated user entity
             language: Language code for I18N error messages
             client_ip: Client IP address for security context and audit
@@ -121,7 +119,7 @@ class UserLogoutService(IUserLogoutService):
             AuthenticationError: If token revocation fails
                                
         Security Considerations:
-        - Concurrent token revocation ensures atomicity
+        - Token revocation ensures session termination
         - Comprehensive audit trails via domain events
         - Secure logging with sensitive data masking
         - Fail-secure error handling
@@ -133,7 +131,6 @@ class UserLogoutService(IUserLogoutService):
                 user_id=user.id,
                 username=user.username,
                 access_token_id=access_token.get_token_id().mask_for_logging(),
-                refresh_token_id=refresh_token.get_token_id().mask_for_logging(),
                 correlation_id=correlation_id,
                 client_ip=client_ip,
                 user_agent_length=len(user_agent) if user_agent else 0,
@@ -143,13 +140,8 @@ class UserLogoutService(IUserLogoutService):
             # Calculate session duration for audit purposes
             session_duration = self._calculate_session_duration(access_token)
             
-            # Revoke both tokens concurrently for performance and atomicity
-            # We revoke both tokens regardless of their validity to ensure clean logout
-            import asyncio
-            await asyncio.gather(
-                self._token_service.revoke_access_token(str(access_token.get_token_id())),
-                self._token_service.revoke_refresh_token(refresh_token.token, language),
-            )
+            # Revoke access token to terminate session
+            await self._token_service.revoke_access_token(str(access_token.get_token_id()))
             
             # Publish domain event for security monitoring and audit trails
             await self._publish_logout_event(

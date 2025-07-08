@@ -7,7 +7,7 @@ def _unique_user_data():
     return {
         "username": f"testuser_{unique}",
         "email": f"test{unique}@example.com",
-        "password": "TempPass123!",
+        "password": "Zx9#mK8@pL2!qR7$",  # Strong password
     }
 
 

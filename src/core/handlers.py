@@ -28,6 +28,7 @@ from src.core.exceptions import (
     PermissionError,
     RateLimitExceededError,
     UserNotFoundError,
+    ValidationError,
 )
 from src.utils.i18n import get_request_language, get_translated_message
 
@@ -46,6 +47,7 @@ __all__ = [
     "password_validation_error_handler",
     "invalid_old_password_error_handler",
     "password_reuse_error_handler",
+    "validation_error_handler",
     "database_error_handler",
     "register_exception_handlers",
 ]
@@ -392,6 +394,25 @@ async def database_error_handler(request: Request, exc: DatabaseError) -> JSONRe
     )
 
 
+async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
+    """Handles `ValidationError`, returning a `422 Unprocessable Entity`.
+
+    This error occurs when input validation fails, such as invalid email format,
+    username requirements, or other validation rules.
+
+    Args:
+        request: The incoming `Request` object.
+        exc: The `ValidationError` instance.
+
+    Returns:
+        A `JSONResponse` with a 422 status code and error detail.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": str(exc)},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Registers all custom exception handlers with the FastAPI application.
 
@@ -420,3 +441,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(UserNotFoundError, user_not_found_error_handler)
     app.add_exception_handler(DatabaseError, database_error_handler)
     app.add_exception_handler(CedrinaError, cedrina_error_handler)
+    app.add_exception_handler(ValidationError, validation_error_handler)

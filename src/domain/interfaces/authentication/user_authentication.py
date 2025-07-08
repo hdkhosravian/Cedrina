@@ -6,7 +6,7 @@ logic for user authentication operations.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only user authentication logic
-- Domain Value Objects: Uses Username and Password value objects
+- Domain Value Objects: Uses Username and LoginPassword value objects
 - Domain Events: Publishes authentication events for audit trails
 - Ubiquitous Language: Method names reflect business concepts
 """
@@ -14,7 +14,7 @@ Key DDD Principles Applied:
 from abc import ABC, abstractmethod
 
 from src.domain.entities.user import User
-from src.domain.value_objects.password import Password
+from src.domain.value_objects.password import LoginPassword, Password
 from src.domain.value_objects.username import Username
 
 
@@ -29,7 +29,7 @@ class IUserAuthenticationService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only authentication logic
-    - Domain Value Objects: Uses Username and Password value objects
+    - Domain Value Objects: Uses Username and LoginPassword value objects
     - Domain Events: Publishes authentication events for audit trails
     - Ubiquitous Language: Method names reflect business concepts
     """
@@ -38,7 +38,7 @@ class IUserAuthenticationService(ABC):
     async def authenticate_user(
         self,
         username: Username,
-        password: Password,
+        password: LoginPassword,
         language: str = "en",
         client_ip: str = "",
         user_agent: str = "",
@@ -54,7 +54,7 @@ class IUserAuthenticationService(ABC):
 
         Args:
             username: The validated and normalized `Username` value object.
-            password: The validated `Password` value object.
+            password: The validated `LoginPassword` value object (minimal validation).
             language: The language for error messages (i18n).
             client_ip: The IP address of the client for auditing.
             user_agent: The user agent of the client for auditing.

@@ -16,9 +16,41 @@ class EmailConfirmationEmailService(IEmailConfirmationEmailService):
     """Render and deliver email confirmation messages."""
 
     def __init__(self) -> None:
-        self._test_mode = getattr(settings, "EMAIL_TEST_MODE", True)
         template_dir = Path(settings.EMAIL_TEMPLATES_DIR)
         self._jinja = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=True)
+        
+        # Add custom filters for email formatting
+        self._jinja.filters['format_datetime'] = self._format_datetime_filter
+
+    def _format_datetime_filter(self, value, format_string="%Y-%m-%d %H:%M:%S"):
+        """Jinja2 filter for formatting datetime objects.
+        
+        Args:
+            value: Datetime object or string
+            format_string: Format string for datetime
+            
+        Returns:
+            str: Formatted datetime string
+        """
+        from datetime import datetime
+        
+        if value is None:
+            return ""
+        
+        if value == "now":
+            return datetime.now().strftime(format_string)
+        
+        if isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return dt.strftime(format_string)
+            except ValueError:
+                return value
+        
+        if hasattr(value, 'strftime'):
+            return value.strftime(format_string)
+        
+        return str(value)
 
     async def send_confirmation_email(
         self, user: User, token: ConfirmationToken, language: str = "en"
@@ -44,15 +76,6 @@ class EmailConfirmationEmailService(IEmailConfirmationEmailService):
         template_txt = f"email_confirmation_{language}.txt"
         html_content = self._jinja.get_template(template_html).render(context)
         text_content = self._jinja.get_template(template_txt).render(context)
-
-        if self._test_mode:
-            logger.info(
-                "Email confirmation (test mode)",
-                to=user.email,
-                url=confirm_url,
-                subject=subject,
-            )
-            return True
 
         logger.info(
             "Email confirmation sent",

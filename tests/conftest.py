@@ -4,8 +4,9 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from fastapi import Request
+from fastapi import Request, FastAPI
 from pytest_mock import MockerFixture
+from asgi_lifespan import LifespanManager
 
 # Adjust sys.path to include src directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -21,7 +22,10 @@ from src.core.config.settings import settings
 from src.domain.entities.user import User
 from src.infrastructure.services.authentication.token import TokenService
 from src.main import app
-from src.infrastructure.database.async_db import get_async_db_dependency
+from src.infrastructure.database.async_db import get_async_db_dependency, engine as async_engine
+from src.infrastructure.redis import get_redis
+import redis.asyncio as aioredis
+from sqlalchemy import text
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -41,135 +45,69 @@ def setup_database():
     create_db_and_tables()
 
 
-@pytest.fixture(scope="function", autouse=True)
-def clean_database():
-    """Clean up database state between tests to ensure complete isolation."""
-    yield  # Run the test first
-
-    # Clean up after each test
-    try:
-        from sqlalchemy import create_engine, text
-        from src.core.config.settings import settings
-
-        # Use test database URL
-        db_url = getattr(settings, "TEST_DATABASE_URL", settings.DATABASE_URL)
-        engine = create_engine(db_url)
-        
-        with engine.connect() as conn:
-            # Start a transaction for cleanup
-            trans = conn.begin()
-            try:
-                # Clean up all test data - more comprehensive cleanup
-                cleanup_queries = [
-                    # Clean up casbin rules (policies)
-                    "DELETE FROM casbin_rule WHERE v0 LIKE '%test%' OR v0 LIKE '%user_%' OR v0 IN ('audit_test_user', 'test_role_cycle', 'test_regular_user_unique') OR v1 LIKE '%test%' OR v1 LIKE '%rate-limit%' OR v1 LIKE '%audit%' OR v1 LIKE '%cycle%'",
-                    
-                    # Clean up audit logs
-                    "DELETE FROM policy_audit_logs WHERE subject LIKE '%test%' OR object LIKE '%test%' OR subject IN ('audit_test_user', 'test_role_cycle')",
-                    
-                    # Clean up sessions
-                    "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE '%test%' OR email LIKE '%test%')",
-                    
-                    # Clean up oauth profiles
-                    "DELETE FROM oauth_profiles WHERE user_id IN (SELECT id FROM users WHERE username LIKE '%test%' OR email LIKE '%test%')",
-                    
-                    # Clean up users (this should be last due to foreign key constraints)
-                    "DELETE FROM users WHERE username LIKE '%test%' OR email LIKE '%test%' OR username IN ('test_user', 'test_admin', 'test_regular_user')",
-                    
-                    # Note: casbin_policies cleanup removed due to column structure differences
-                ]
-                
-                for query in cleanup_queries:
-                    try:
-                        conn.execute(text(query))
-                    except Exception as e:
-                        # Log but don't fail - some tables might not exist or have different constraints
-                        print(f"Cleanup query warning: {e}")
-                
-                trans.commit()
-                
-            except Exception as e:
-                trans.rollback()
-                print(f"Database cleanup transaction failed: {e}")
-                # Try individual cleanup without transaction
-                for query in cleanup_queries:
-                    try:
-                        conn.execute(text(query))
-                        conn.commit()
-                    except Exception as e2:
-                        print(f"Individual cleanup query failed: {e2}")
-
-    except Exception as e:
-        # Don't fail tests if cleanup fails
-        print(f"Database cleanup warning: {e}")
-        pass
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def clean_redis():
+    """Clean Redis before each test to ensure complete isolation."""
+    redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/0")
+    redis = aioredis.from_url(redis_url, decode_responses=True)
+    await redis.flushdb()
+    await redis.close()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_session():
-    """Create an async database session for tests using the test database."""
-    # Use test database URL
-    db_url = getattr(settings, "TEST_DATABASE_URL", settings.DATABASE_URL)
+async def async_client(clean_redis):
+    """Create an async client with proper async DB session isolation and shared Redis."""
+    # Create a fresh async engine for each test to ensure complete isolation
+    from src.infrastructure.database.async_db import _build_async_url
+    from sqlalchemy.orm import sessionmaker
     
-    # Convert sync URL to async URL if needed
-    if db_url.startswith("postgresql+psycopg2://"):
-        db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+    # Build fresh async URL
+    async_url = _build_async_url()
     
-    async_engine = create_async_engine(db_url, echo=False)
-    async with AsyncSession(async_engine) as session:
-        yield session
-
-
-@pytest_asyncio.fixture(scope="function")
-async def async_client():
-    # Ensure rate limiter is configured
-    from slowapi import Limiter
-    from slowapi.util import get_remote_address
-    from src.main import app
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    # Create a fresh engine for this test
+    from sqlalchemy.ext.asyncio import create_async_engine
+    test_engine = create_async_engine(async_url, echo=False, future=True, pool_pre_ping=True)
     
-    # Configure rate limiter if not already set
-    if not hasattr(app.state, 'limiter'):
-        limiter = Limiter(key_func=get_remote_address)
-        app.state.limiter = limiter
-    
-    # Disable rate limiting for tests
-    import os
-    os.environ["RATE_LIMIT_ENABLED"] = "false"
-    
-    # Create a fresh async engine and session for each test
-    db_url = getattr(settings, "TEST_DATABASE_URL", settings.DATABASE_URL)
-    if db_url.startswith("postgresql+psycopg2://"):
-        db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
-    
-    # Create a new engine for each test to avoid connection sharing issues
-    test_engine = create_async_engine(
-        db_url, 
-        echo=False,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        # Ensure each test gets fresh connections
-        pool_size=1,
-        max_overflow=0
+    # Create a fresh session factory
+    TestAsyncSessionFactory = sessionmaker(
+        bind=test_engine, class_=AsyncSession, expire_on_commit=False
     )
     
-    # Create dependency override that creates a fresh session for each request
-    async def get_test_db():
-        async with AsyncSession(test_engine) as session:
-            yield session
+    async def get_fresh_async_db():
+        """Get a completely fresh async DB session for each test."""
+        async with TestAsyncSessionFactory() as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
     
-    # Override the database dependency
-    app.dependency_overrides[get_async_db_dependency] = get_test_db
+    # Create a shared Redis client for the test
+    redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/0")
+    test_redis = aioredis.from_url(redis_url, decode_responses=True)
     
-    try:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
-    finally:
-        # Clean up: remove the override and dispose the engine
-        if get_async_db_dependency in app.dependency_overrides:
-            del app.dependency_overrides[get_async_db_dependency]
-        await test_engine.dispose()
+    async def get_test_redis():
+        """Get the same Redis instance used by the test."""
+        try:
+            yield test_redis
+        finally:
+            # Don't close here as we need it to persist across requests in the same test
+            pass
+    
+    # Override both dependencies to ensure app and test client use the same instances
+    app.dependency_overrides[get_async_db_dependency] = get_fresh_async_db
+    app.dependency_overrides[get_redis] = get_test_redis
+    
+    async with LifespanManager(app):
+        async with AsyncClient(app=app, base_url="http://test") as ac:
+            yield ac
+    
+    # Clean up
+    app.dependency_overrides.clear()
+    await test_redis.aclose()
+    await test_engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -272,3 +210,22 @@ def ensure_test_database():
         print("Make sure to run 'make db-migrate' before running tests.")
     
     yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_session():
+    from src.infrastructure.database.async_db import _build_async_url
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+
+    async_url = _build_async_url()
+    test_engine = create_async_engine(async_url, echo=False, future=True, pool_pre_ping=True)
+    TestAsyncSessionFactory = sessionmaker(
+        bind=test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with TestAsyncSessionFactory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+    await test_engine.dispose()

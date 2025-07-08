@@ -24,7 +24,7 @@ from fastapi import Depends
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.interfaces.repositories import IUserRepository
+from src.domain.interfaces.repositories import IUserRepository, IOAuthProfileRepository
 from src.domain.interfaces import (
     IEventPublisher,
     IOAuthService,
@@ -38,6 +38,8 @@ from src.domain.interfaces import (
     IUserAuthenticationService,
     IUserLogoutService,
     IUserRegistrationService,
+    IErrorClassificationService,
+    IPasswordEncryptionService,
 )
 from src.infrastructure.services.authentication.token import TokenService as LegacyTokenService
 from src.domain.services.authentication.oauth_service import OAuthAuthenticationService
@@ -65,6 +67,7 @@ from src.core.rate_limiting.password_reset_service import (
 from src.infrastructure.database.async_db import get_async_db_dependency
 from src.infrastructure.redis import get_redis
 from src.infrastructure.repositories.user_repository import UserRepository
+from src.infrastructure.repositories.oauth_profile_repository import OAuthProfileRepository
 from src.infrastructure.services.event_publisher import InMemoryEventPublisher
 from src.infrastructure.services.password_reset_email_service import (
     PasswordResetEmailService,
@@ -85,6 +88,12 @@ from src.domain.services.email_confirmation.email_confirmation_service import (
     EmailConfirmationService,
 )
 from src.infrastructure.services.token_service_adapter import TokenServiceAdapter
+from src.domain.services.authentication import (
+    ErrorClassificationService,
+)
+from src.infrastructure.services.authentication import (
+    PasswordEncryptionService,
+)
 
 # ---------------------------------------------------------------------------
 # Type aliases for dependency injection
@@ -116,6 +125,25 @@ def get_user_repository(db: AsyncDB) -> IUserRepository:
         and configuration changes.
     """
     return UserRepository(db)
+
+
+def get_oauth_profile_repository(db: AsyncDB) -> IOAuthProfileRepository:
+    """Factory that returns OAuth profile repository implementation.
+    
+    This factory creates a concrete implementation of the OAuth profile repository
+    interface, providing data access abstraction for OAuth authentication services.
+    
+    Args:
+        db: Database session dependency from FastAPI
+        
+    Returns:
+        IOAuthProfileRepository: Clean OAuth profile repository implementation
+        
+    Note:
+        This repository follows clean architecture principles and provides
+        secure, efficient data access for OAuth profile management.
+    """
+    return OAuthProfileRepository(db)
 
 
 def get_event_publisher() -> IEventPublisher:
@@ -205,9 +233,19 @@ def get_user_authentication_service(
     )
 
 
+def get_email_confirmation_token_service() -> IEmailConfirmationTokenService:
+    return EmailConfirmationTokenService()
+
+
+def get_email_confirmation_email_service() -> IEmailConfirmationEmailService:
+    return EmailConfirmationEmailService()
+
+
 def get_user_registration_service(
     user_repository: IUserRepository = Depends(get_user_repository),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
+    confirmation_token_service: IEmailConfirmationTokenService = Depends(get_email_confirmation_token_service),
+    confirmation_email_service: IEmailConfirmationEmailService = Depends(get_email_confirmation_email_service),
 ) -> IUserRegistrationService:
     """Factory that returns clean user registration service.
     
@@ -217,6 +255,8 @@ def get_user_registration_service(
     Args:
         user_repository: User repository dependency for data access
         event_publisher: Event publisher dependency for domain events
+        confirmation_token_service: Email confirmation token service
+        confirmation_email_service: Email confirmation email service
         
     Returns:
         IUserRegistrationService: Clean registration service
@@ -229,11 +269,14 @@ def get_user_registration_service(
     return UserRegistrationService(
         user_repository=user_repository,
         event_publisher=event_publisher,
+        confirmation_token_service=confirmation_token_service,
+        confirmation_email_service=confirmation_email_service,
     )
 
 
 def get_oauth_service(
     user_repository: IUserRepository = Depends(get_user_repository),
+    oauth_profile_repository: IOAuthProfileRepository = Depends(get_oauth_profile_repository),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> IOAuthService:
     """Factory that returns clean OAuth service implementation.
@@ -243,6 +286,7 @@ def get_oauth_service(
     
     Args:
         user_repository: User repository dependency for data access
+        oauth_profile_repository: OAuth profile repository dependency for OAuth profile management
         event_publisher: Event publisher dependency for domain events
         
     Returns:
@@ -251,33 +295,9 @@ def get_oauth_service(
     Note:
         The OAuth service depends on abstractions (interfaces) rather than
         concrete implementations, following dependency inversion principle
-        from SOLID. Currently uses in-memory event publisher and user
-        repository, but can be easily configured for production use.
+        from SOLID. OAuth authentication does not use passwords - authentication
+        is handled by external providers (Google, Microsoft, Facebook, etc.).
     """
-    # TODO: Add OAuth profile repository when implemented
-    # For now, we'll need to create a mock or placeholder implementation
-    # This is a temporary solution until the OAuth profile repository is implemented
-    
-    # Create a placeholder OAuth profile repository
-    # In a real implementation, this would be a proper repository
-    class PlaceholderOAuthProfileRepository:
-        async def get_by_provider_and_user_id(self, provider, provider_user_id):
-            return None
-        
-        async def get_by_user_id(self, user_id):
-            return []
-        
-        async def create(self, oauth_profile):
-            return oauth_profile
-        
-        async def update(self, oauth_profile):
-            return oauth_profile
-        
-        async def delete(self, oauth_profile_id):
-            pass
-    
-    oauth_profile_repository = PlaceholderOAuthProfileRepository()
-    
     return OAuthAuthenticationService(
         user_repository=user_repository,
         oauth_profile_repository=oauth_profile_repository,
@@ -399,31 +419,13 @@ def get_password_reset_email_service() -> IPasswordResetEmailService:
 
 
 def get_password_reset_request_service(
-    user_repository: IUserRepository = Depends(get_user_repository),
+    db: AsyncDB,
     rate_limiting_service: IRateLimitingService = Depends(get_password_reset_rate_limiting_service),
     token_service: IPasswordResetTokenService = Depends(get_password_reset_token_service),
     email_service: IPasswordResetEmailService = Depends(get_password_reset_email_service),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> PasswordResetRequestService:
-    """Factory that returns password reset request service.
-    
-    This factory creates the domain service for handling password reset
-    requests with all required dependencies.
-    
-    Args:
-        user_repository: User repository dependency for data access
-        rate_limiting_service: Rate limiting service for abuse prevention
-        token_service: Token service for secure token generation
-        email_service: Email service for sending reset emails
-        event_publisher: Event publisher dependency for domain events
-        
-    Returns:
-        PasswordResetRequestService: Service for password reset requests
-        
-    Note:
-        This service coordinates all password reset request operations
-        including validation, rate limiting, token generation, and email delivery.
-    """
+    user_repository = UserRepository(db)
     return PasswordResetRequestService(
         user_repository=user_repository,
         rate_limiting_service=rate_limiting_service,
@@ -431,14 +433,6 @@ def get_password_reset_request_service(
         email_service=email_service,
         event_publisher=event_publisher,
     )
-
-
-def get_email_confirmation_token_service() -> IEmailConfirmationTokenService:
-    return EmailConfirmationTokenService()
-
-
-def get_email_confirmation_email_service() -> IEmailConfirmationEmailService:
-    return EmailConfirmationEmailService()
 
 
 def get_email_confirmation_request_service(
@@ -466,29 +460,65 @@ def get_email_confirmation_service(
 
 
 def get_password_reset_service(
-    user_repository: IUserRepository = Depends(get_user_repository),
+    db: AsyncDB,
     token_service: IPasswordResetTokenService = Depends(get_password_reset_token_service),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> PasswordResetService:
-    """Factory that returns password reset execution service.
-    
-    This factory creates the domain service for executing password resets
-    using valid tokens.
-    
-    Args:
-        user_repository: User repository dependency for data access
-        token_service: Token service for validation and invalidation
-        event_publisher: Event publisher dependency for domain events
-        
-    Returns:
-        PasswordResetService: Service for password reset execution
-        
-    Note:
-        This service handles the execution phase of password reset
-        including token validation, password updates, and audit logging.
-    """
+    user_repository = UserRepository(db)
     return PasswordResetService(
         user_repository=user_repository,
         token_service=token_service,
         event_publisher=event_publisher,
     )
+
+
+# Additional Dependency Factories
+# ---------------------------------------------------------------------------
+
+def get_error_classification_service() -> IErrorClassificationService:
+    """Factory that returns error classification service following Strategy pattern.
+    
+    This factory creates the error classification service that uses the Strategy pattern
+    to classify different types of domain errors into appropriate HTTP exceptions.
+    
+    Returns:
+        IErrorClassificationService: Error classification service for clean error handling
+        
+    Note:
+        The error classification service includes:
+        - Strategy Pattern for different error classification approaches
+        - Single Responsibility for error classification logic
+        - Consistent error responses across all endpoints
+        - Separation of concerns between domain and HTTP concerns
+    """
+    return ErrorClassificationService()
+
+
+def get_password_encryption_service() -> IPasswordEncryptionService:
+    """Factory that returns password encryption service for defense-in-depth security.
+    
+    This factory creates the password hash encryption service that adds an additional
+    security layer beyond bcrypt hashing for defense-in-depth security.
+    
+    Returns:
+        IPasswordEncryptionService: Password encryption service for enhanced security
+        
+    Note:
+        The password encryption service provides:
+        - AES-256-GCM encryption for password hashes
+        - Key separation from database credentials
+        - Migration compatibility for legacy unencrypted hashes
+        - Constant-time operations to prevent timing attacks
+    """
+    return PasswordEncryptionService()
+
+
+# Type aliases for dependency injection
+UserAuthenticationServiceDep = Annotated[IUserAuthenticationService, Depends(get_user_authentication_service)]
+UserRegistrationServiceDep = Annotated[IUserRegistrationService, Depends(get_user_registration_service)]
+UserLogoutServiceDep = Annotated[IUserLogoutService, Depends(get_user_logout_service)]
+PasswordChangeServiceDep = Annotated[IPasswordChangeService, Depends(get_password_change_service)]
+OAuthServiceDep = Annotated[IOAuthService, Depends(get_oauth_service)]
+TokenServiceDep = Annotated[ITokenService, Depends(get_token_service)]
+ErrorClassificationServiceDep = Annotated[IErrorClassificationService, Depends(get_error_classification_service)]
+PasswordEncryptionServiceDep = Annotated[IPasswordEncryptionService, Depends(get_password_encryption_service)]

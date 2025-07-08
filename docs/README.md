@@ -20,6 +20,11 @@ Welcome to the Cedrina documentation. This comprehensive guide covers all aspect
 - **[Permissions & Authorization](features/permissions/README.md)** - Role-based access control
 - **[Internationalization (i18n)](features/internationalization.md)** - Multi-language support
 
+### 🛡️ Security
+- **[Security Timing Guide](security/timing-guide.md)** - Complete guide to timing attack prevention
+- **[Security Timing Quick Reference](security/timing-quick-reference.md)** - Quick setup and configuration
+- **[Security Timing Configuration](security/timing-config.md)** - Advanced configuration options
+
 ### 🛠️ Development
 - **[Development Setup](development/setup.md)** - Local development environment
 - **[Testing Guide](development/testing.md)** - Comprehensive testing strategy

@@ -14,6 +14,7 @@ Key DDD Principles Applied:
 from abc import ABC, abstractmethod
 
 from src.domain.entities.user import User
+from src.domain.value_objects.jwt_token import AccessToken
 
 
 class IUserLogoutService(ABC):
@@ -35,8 +36,7 @@ class IUserLogoutService(ABC):
     @abstractmethod
     async def logout_user(
         self,
-        access_token: "AccessToken",  # Forward reference to avoid circular imports
-        refresh_token: "RefreshToken",  # Forward reference to avoid circular imports
+        access_token: AccessToken,
         user: User,
         language: str = "en",
         client_ip: str = "",
@@ -47,7 +47,6 @@ class IUserLogoutService(ABC):
 
         Args:
             access_token: The user's `AccessToken` to be revoked.
-            refresh_token: The user's `RefreshToken` to be revoked.
             user: The `User` entity who is logging out.
             language: The language for any potential messages.
             client_ip: The client's IP address for auditing.
