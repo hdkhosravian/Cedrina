@@ -6,8 +6,8 @@ like JWT token management, session storage, OAuth provider integration, and
 password encryption.
 
 Infrastructure Services:
-- Token Service: JWT token creation, validation, and lifecycle management
-- Session Service: User session management with Redis and PostgreSQL
+- Domain Token Service: Advanced token lifecycle management with token family security
+- Unified Session Service: Database-only session management with token family integration
 - OAuth Service: External OAuth provider integration (Google, Microsoft, Facebook) 
 - Password Encryption Service: Defense-in-depth password hash encryption
 
@@ -15,14 +15,14 @@ These services implement domain interfaces and are injected into domain services
 through the dependency injection container, following the dependency inversion principle.
 """
 
-from .token import TokenService
-from .session import SessionService  
+from .domain_token_service import DomainTokenService
+from .unified_session_service import UnifiedSessionService
 from .oauth import OAuthService
 from .password_encryption import PasswordEncryptionService
 
 __all__ = [
-    "TokenService",
-    "SessionService", 
+    "DomainTokenService",
+    "UnifiedSessionService", 
     "OAuthService",
     "PasswordEncryptionService",
 ] 

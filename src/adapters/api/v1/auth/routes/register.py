@@ -16,6 +16,7 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
     get_error_classification_service,
 )
 from src.adapters.api.v1.auth.schemas import AuthResponse, RegisterRequest, UserOut
+from src.adapters.api.v1.auth.utils import create_token_pair
 from src.core.exceptions import (
     AuthenticationError,
     DuplicateUserError,
@@ -116,31 +117,20 @@ async def register_user(
             security_enhanced=True
         )
         
-        # Generate JWT tokens for authenticated session
-        if hasattr(token_service, 'create_token_pair'):
-            tokens = await token_service.create_token_pair(user)
-        else:
-            # Fallback: create tokens individually
-            access_token = await token_service.create_access_token(user)
-            refresh_token = await token_service.create_refresh_token(user)
-            tokens = {
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": "bearer",
-                "expires_in": 900,
-            }
+        # Generate JWT tokens for authenticated session using utility function
+        tokens = await create_token_pair(token_service, user)
         
         request_logger.info(
             "Registration tokens created",
             user_id=user.id,
-            token_type=tokens.get("token_type", "bearer"),
-            expires_in=tokens.get("expires_in", 900),
+            token_type=tokens.token_type,
+            expires_in=tokens.expires_in,
             security_enhanced=True
         )
         
         # Return user data and tokens
         return AuthResponse(
-            tokens=tokens,
+            tokens=tokens.dict(),
             user=UserOut.from_entity(user)
         )
         

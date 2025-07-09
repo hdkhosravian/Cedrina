@@ -1,48 +1,54 @@
-"""Clean Architecture Dependencies for Authentication.
+"""Authentication and Authorization Dependency Injection.
 
-This module provides dependency injection for clean authentication services
-following Domain-Driven Design principles and dependency inversion.
+This module provides dependency injection factories for authentication and authorization
+services following clean architecture principles. All services are injected through
+interfaces to maintain loose coupling and enable easy testing.
 
-Key DDD Principles Applied:
-- Dependency Inversion through interfaces
-- Single Responsibility for each factory
-- Clean separation of infrastructure and domain concerns
-- Proper abstraction layers
-- Testable dependency injection
+Key Features:
+- Domain-driven design with interface-based injection
+- Database-only token and session management
+- Advanced security patterns with token family integration
+- Comprehensive error handling and logging
+- Event-driven architecture for audit trails
 
-The dependency injection follows clean architecture by:
-1. Defining clear interfaces for all dependencies
-2. Implementing concrete factories for each service
-3. Using dependency injection for loose coupling
-4. Supporting both development and production configurations
-5. Maintaining separation between infrastructure and domain layers
+Architecture:
+- Domain Layer: Pure business logic with interfaces
+- Infrastructure Layer: Concrete implementations
+- Dependency Injection: Interface-based service resolution
+- Event Publishing: Domain event handling for security monitoring
 """
+
+from __future__ import annotations
 
 from typing import Annotated
 
 from fastapi import Depends
-# Removed Redis import - no longer needed with unified architecture
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.interfaces.repositories import IUserRepository, IOAuthProfileRepository, ITokenFamilyRepository
 from src.domain.interfaces import (
+    IUserRepository,
+    IOAuthProfileRepository,
+    ITokenFamilyRepository,
     IEventPublisher,
-    IOAuthService,
+    IUserAuthenticationService,
+    IUserRegistrationService,
+    IUserLogoutService,
     IPasswordChangeService,
-    IPasswordResetEmailService,
+    IOAuthService,
+    ITokenService,
+    IRateLimitingService,
     IPasswordResetTokenService,
+    IPasswordResetEmailService,
+    IPasswordResetRequestService,
+    IPasswordResetService,
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
-    IRateLimitingService,
-    ITokenService,
-    IUserAuthenticationService,
-    IUserLogoutService,
+    IEmailConfirmationRequestService,
+    IEmailConfirmationService,
     IUserRegistrationService,
     IErrorClassificationService,
     IPasswordEncryptionService,
 )
 from src.domain.interfaces.authentication.token_validation import IEnhancedTokenValidationService
-from src.infrastructure.services.authentication.token import TokenService as LegacyTokenService
 from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 from src.domain.services.authentication.oauth_service import OAuthAuthenticationService
 from src.domain.services.authentication.password_change_service import (
@@ -67,7 +73,6 @@ from src.core.rate_limiting.password_reset_service import (
     RateLimitingService,
 )
 from src.infrastructure.database.async_db import get_async_db_dependency
-# Removed Redis dependency - unified architecture uses database-only approach
 from src.infrastructure.repositories.user_repository import UserRepository
 from src.infrastructure.repositories.oauth_profile_repository import OAuthProfileRepository
 from src.infrastructure.repositories.token_family_repository import TokenFamilyRepository
@@ -90,7 +95,6 @@ from src.domain.services.email_confirmation.email_confirmation_request_service i
 from src.domain.services.email_confirmation.email_confirmation_service import (
     EmailConfirmationService,
 )
-from src.infrastructure.services.token_service_adapter import TokenServiceAdapter
 from src.domain.services.authentication import (
     ErrorClassificationService,
 )
@@ -100,15 +104,14 @@ from src.domain.services.authentication.enhanced_token_validation_service import
 from src.infrastructure.services.authentication import (
     PasswordEncryptionService,
 )
-from src.infrastructure.services.authentication.session import SessionService
 from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ---------------------------------------------------------------------------
 # Type aliases for dependency injection
 # ---------------------------------------------------------------------------
 
 AsyncDB = Annotated[AsyncSession, Depends(get_async_db_dependency)]
-# Removed Redis client dependency - unified architecture eliminates Redis usage
 
 # ---------------------------------------------------------------------------
 # Infrastructure Layer Dependencies
@@ -287,9 +290,11 @@ def get_user_registration_service(
         IUserRegistrationService: Clean registration service
         
     Note:
-        The registration service depends on abstractions (interfaces)
-        rather than concrete implementations, following dependency
-        inversion principle from SOLID.
+        The registration service implements clean architecture principles:
+        - Domain-driven design with rich domain models
+        - Event-driven architecture for audit trails
+        - Comprehensive validation and error handling
+        - Security-first approach with data masking
     """
     return UserRegistrationService(
         user_repository=user_repository,
@@ -304,24 +309,25 @@ def get_oauth_service(
     oauth_profile_repository: IOAuthProfileRepository = Depends(get_oauth_profile_repository),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> IOAuthService:
-    """Factory that returns clean OAuth service implementation.
+    """Factory that returns OAuth authentication service.
     
-    This factory creates the domain OAuth service with its dependencies,
-    following dependency injection principles.
+    This factory creates the OAuth authentication service with its
+    dependencies, following dependency injection principles.
     
     Args:
         user_repository: User repository dependency for data access
-        oauth_profile_repository: OAuth profile repository dependency for OAuth profile management
+        oauth_profile_repository: OAuth profile repository dependency
         event_publisher: Event publisher dependency for domain events
         
     Returns:
-        IOAuthService: Clean OAuth service implementation
+        IOAuthService: OAuth authentication service
         
     Note:
-        The OAuth service depends on abstractions (interfaces) rather than
-        concrete implementations, following dependency inversion principle
-        from SOLID. OAuth authentication does not use passwords - authentication
-        is handled by external providers (Google, Microsoft, Facebook, etc.).
+        The OAuth service provides secure integration with external providers:
+        - Google, Microsoft, and Facebook OAuth support
+        - Secure token exchange and validation
+        - Profile synchronization and management
+        - Comprehensive audit logging
     """
     return OAuthAuthenticationService(
         user_repository=user_repository,
@@ -334,22 +340,24 @@ def get_user_logout_service(
     token_service: ITokenService = Depends(get_token_service),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> IUserLogoutService:
-    """Factory that returns clean user logout service.
+    """Factory that returns user logout service.
     
-    This factory creates the domain logout service with its dependencies,
+    This factory creates the logout service with its dependencies,
     following dependency injection principles.
     
     Args:
-        token_service: Token service dependency for token operations
+        token_service: Token service dependency for token revocation
         event_publisher: Event publisher dependency for domain events
         
     Returns:
-        IUserLogoutService: Clean logout service
+        IUserLogoutService: User logout service
         
     Note:
-        The logout service depends on abstractions (interfaces)
-        rather than concrete implementations, following dependency
-        inversion principle from SOLID.
+        The logout service provides secure session termination:
+        - Immediate token revocation and blacklisting
+        - Session cleanup and activity tracking
+        - Comprehensive audit logging
+        - Cross-device logout support
     """
     return UserLogoutService(
         token_service=token_service,
@@ -361,9 +369,9 @@ def get_password_change_service(
     user_repository: IUserRepository = Depends(get_user_repository),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> IPasswordChangeService:
-    """Factory that returns clean password change service.
+    """Factory that returns password change service.
     
-    This factory creates the domain password change service with its
+    This factory creates the password change service with its
     dependencies, following dependency injection principles.
     
     Args:
@@ -371,12 +379,14 @@ def get_password_change_service(
         event_publisher: Event publisher dependency for domain events
         
     Returns:
-        IPasswordChangeService: Clean password change service
+        IPasswordChangeService: Password change service
         
     Note:
-        The password change service depends on abstractions (interfaces)
-        rather than concrete implementations, following dependency
-        inversion principle from SOLID.
+        The password change service provides secure password management:
+        - Defense-in-depth password encryption
+        - Password policy enforcement
+        - Comprehensive audit logging
+        - Cross-session invalidation
     """
     return PasswordChangeService(
         user_repository=user_repository,
@@ -387,15 +397,18 @@ def get_password_change_service(
 def get_password_reset_rate_limiting_service() -> IRateLimitingService:
     """Factory that returns rate limiting service for password resets.
     
-    This factory creates the rate limiting service to prevent abuse
-    of password reset functionality.
+    This factory creates the rate limiting service to prevent
+    abuse of password reset functionality.
     
     Returns:
         IRateLimitingService: Rate limiting service for password resets
         
     Note:
-        The rate limiting service prevents brute force attacks on
-        password reset functionality with configurable limits.
+        The rate limiting service provides abuse prevention:
+        - Per-email address rate limiting
+        - Configurable limits and timeouts
+        - Comprehensive monitoring and alerting
+        - Automatic cleanup of expired data
     """
     return RateLimitingService()
 
@@ -403,13 +416,13 @@ def get_password_reset_rate_limiting_service() -> IRateLimitingService:
 def get_password_reset_token_service(
     rate_limiting_service: IRateLimitingService = Depends(get_password_reset_rate_limiting_service),
 ) -> IPasswordResetTokenService:
-    """Factory that returns enhanced password reset token service with rate limiting.
+    """Factory that returns enhanced password reset token service.
     
-    This factory creates the enhanced token service for generating and validating
-    password reset tokens with comprehensive security features including rate limiting.
+    This factory creates the password reset token service with
+    rate limiting integration for enhanced security.
     
     Args:
-        rate_limiting_service: Rate limiting service for abuse prevention
+        rate_limiting_service: Rate limiting service dependency
         
     Returns:
         IPasswordResetTokenService: Enhanced token service for password resets

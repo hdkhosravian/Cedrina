@@ -1,53 +1,39 @@
-"""Infrastructure Services.
+"""Infrastructure Services Module.
 
-This module provides concrete implementations of infrastructure services
-following clean architecture principles. These services handle technical concerns
-and external integrations while implementing domain interfaces.
+This module provides concrete implementations of infrastructure services following
+clean architecture principles. These services handle technical concerns like
+authentication, email, and data persistence.
 
-Service Categories:
-- Authentication: JWT tokens, sessions, OAuth, password encryption
-- Email: Email delivery and template rendering
-- Events: Domain event publishing and handling
-- Password Reset: Token generation and email delivery
+Services:
+- Authentication Services: Token management, session handling, OAuth integration
+- Email Services: Password reset and confirmation email handling
+- Password Reset Services: Token generation and email delivery
+- Event Publishing: Domain event publishing for audit trails
+
+All services implement domain interfaces and are injected through dependency
+injection containers, following the dependency inversion principle.
 """
 
-# Authentication Infrastructure Services
 from .authentication import (
-    TokenService,
-    SessionService,
-    OAuthService, 
+    DomainTokenService,
+    UnifiedSessionService,
+    OAuthService,
     PasswordEncryptionService,
 )
-
-# Event Publishing Services
-from .event_publisher import InMemoryEventPublisher, ProductionEventPublisher
-
-# Email Services
 from .password_reset_email_service import PasswordResetEmailService
-
-# Password Reset Services  
 from .password_reset_token_service import PasswordResetTokenService
-
-# Token Service Adapter
-from .token_service_adapter import TokenServiceAdapter
+from .email_confirmation_token_service import EmailConfirmationTokenService
+from .email_confirmation_email_service import EmailConfirmationEmailService
+from .event_publisher import InMemoryEventPublisher
 
 __all__ = [
-    # Authentication Services
-    "TokenService",
-    "SessionService",
+    "DomainTokenService",
+    "UnifiedSessionService",
     "OAuthService",
     "PasswordEncryptionService",
-    
-    # Event Publishing
-    "InMemoryEventPublisher", 
-    "ProductionEventPublisher",
-    
-    # Email Services
     "PasswordResetEmailService",
-    
-    # Password Reset Services
     "PasswordResetTokenService",
-    
-    # Service Adapters
-    "TokenServiceAdapter",
+    "EmailConfirmationTokenService",
+    "EmailConfirmationEmailService",
+    "InMemoryEventPublisher",
 ] 

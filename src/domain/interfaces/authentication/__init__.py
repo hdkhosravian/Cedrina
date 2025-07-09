@@ -14,10 +14,14 @@ from .password_change import IPasswordChangeService
 from .password_reset import (
     IPasswordResetTokenService,
     IPasswordResetEmailService,
+    IPasswordResetRequestService,
+    IPasswordResetService,
 )
 from .email_confirmation import (
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
+    IEmailConfirmationRequestService,
+    IEmailConfirmationService,
 )
 
 # OAuth interfaces
@@ -34,8 +38,12 @@ __all__ = [
     # Password management interfaces
     "IPasswordResetTokenService",
     "IPasswordResetEmailService",
+    "IPasswordResetRequestService",
+    "IPasswordResetService",
     "IEmailConfirmationTokenService",
     "IEmailConfirmationEmailService",
+    "IEmailConfirmationRequestService",
+    "IEmailConfirmationService",
 
     # OAuth interfaces
     "IOAuthService",

@@ -96,6 +96,8 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         self._event_publisher = event_publisher or InMemoryEventPublisher()
         
         # Initialize domain service with infrastructure dependencies
+        # Note: The domain service uses the repository for database operations,
+        # which already has access to the database session
         self._domain_service = TokenLifecycleManagementService(
             token_family_repository=self._token_family_repository,
             event_publisher=self._event_publisher
@@ -130,9 +132,10 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             SecurityViolationError: If security context indicates threat
         """
         try:
-            # Start database transaction for consistency
-            async with self.db_session.begin():
-                # Delegate to domain service for business logic
+            if not self.db_session.in_transaction():
+                async with self.db_session.begin():
+                    token_pair = await self._domain_service.create_token_pair_with_family_security(request)
+            else:
                 token_pair = await self._domain_service.create_token_pair_with_family_security(request)
                 
                 logger.info(
@@ -179,9 +182,10 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             SecurityViolationError: If token reuse or family compromise detected
         """
         try:
-            # Start database transaction for consistency
-            async with self.db_session.begin():
-                # Delegate to domain service for business logic
+            if not self.db_session.in_transaction():
+                async with self.db_session.begin():
+                    token_pair = await self._domain_service.refresh_tokens_with_family_security(request)
+            else:
                 token_pair = await self._domain_service.refresh_tokens_with_family_security(request)
                 
                 logger.info(
@@ -202,8 +206,7 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
                 correlation_id=request.correlation_id
             )
             raise AuthenticationError(
-                get_translated_message("token_refresh_infrastructure_error", request.language)
-            )
+                get_translated_message("token_refresh_infrastructure_error", "en"))
     
     async def validate_token_with_family_security(
         self,
@@ -263,7 +266,46 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
                 get_translated_message("token_validation_infrastructure_error", language)
             )
     
+    async def validate_access_token(self, token: str, language: str = "en") -> dict:
+        """Validates a JWT access token and returns its payload."""
+        try:
+            # Delegate to domain service for validation
+            payload = await self._domain_service.validate_access_token(token, language)
+            return payload
+        except Exception as e:
+            logger.error(
+                "Error validating access token",
+                error=str(e)
+            )
+            raise AuthenticationError(get_translated_message("invalid_token", language))
+
+    async def revoke_access_token(self, jti: str, expires_in: Optional[int] = None) -> None:
+        """Revokes an access token by its unique identifier (jti)."""
+        try:
+            # Delegate to domain service for revocation
+            await self._domain_service.revoke_access_token(jti, expires_in)
+        except Exception as e:
+            logger.error(
+                "Error revoking access token",
+                error=str(e)
+            )
+            raise AuthenticationError(get_translated_message("token_revocation_failed", "en"))
+
+    async def revoke_refresh_token(self, token: RefreshToken, language: str = "en") -> None:
+        """Revokes a refresh token."""
+        try:
+            # Delegate to domain service for revocation
+            await self._domain_service.revoke_refresh_token(token, language)
+        except Exception as e:
+            logger.error(
+                "Error revoking refresh token",
+                error=str(e)
+            )
+            raise AuthenticationError(get_translated_message("token_revocation_failed", language))
+    
     # === Legacy Compatibility Methods ===
+    # DEPRECATED: These methods are provided for migration compatibility only.
+    # New code should use create_token_pair_with_family_security instead.
     
     async def create_access_token(
         self,
@@ -274,13 +316,21 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         correlation_id: Optional[str] = None
     ) -> str:
         """
-        Legacy compatibility method for access token creation.
+        DEPRECATED: Legacy compatibility method for access token creation.
         
-        This method provides backward compatibility with the legacy TokenService
-        interface while using the new domain service internally.
-        
-        **Deprecation Notice:** This method is provided for migration compatibility.
+        This method is provided for migration compatibility only.
         New code should use create_token_pair_with_family_security instead.
+        
+        **Migration Guide:**
+        ```python
+        # OLD (deprecated):
+        token = await token_service.create_access_token(user)
+        
+        # NEW (recommended):
+        request = TokenCreationRequest(user=user, security_context=context)
+        token_pair = await token_service.create_token_pair_with_family_security(request)
+        token = token_pair.access_token
+        ```
         
         Args:
             user: User for whom to create the token
@@ -292,6 +342,13 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         Returns:
             str: Encoded JWT access token
         """
+        import warnings
+        warnings.warn(
+            "create_access_token is deprecated. Use create_token_pair_with_family_security instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         # Create security context from legacy parameters
         security_context = SecurityContext.create_for_request(
             client_ip=client_ip or "127.0.0.1",

@@ -301,11 +301,21 @@ class TokenFamily(SQLModel, table=True):
     
     def encrypt_and_store_data(self) -> None:
         """Encrypt and store token data to database fields."""
-        # For now, store as None - encryption will be implemented separately
-        # TODO: Implement proper encryption when encryption service is available
-        self.active_tokens_encrypted = None
-        self.revoked_tokens_encrypted = None
-        self.usage_history_encrypted = None
+        from src.infrastructure.services.security.field_encryption_service import FieldEncryptionService
+        
+        encryption_service = FieldEncryptionService()
+        
+        # Encrypt active tokens list
+        if self.active_tokens:
+            self.active_tokens_encrypted = encryption_service.encrypt_token_list(self.active_tokens)
+        
+        # Encrypt revoked tokens list  
+        if self.revoked_tokens:
+            self.revoked_tokens_encrypted = encryption_service.encrypt_token_list(self.revoked_tokens)
+        
+        # Encrypt usage history
+        if self.usage_history:
+            self.usage_history_encrypted = encryption_service.encrypt_usage_history(self.usage_history)
     
     def add_token(
         self, 
@@ -623,3 +633,46 @@ class TokenFamily(SQLModel, table=True):
             "unique_ip_count": len(unique_ips),
             "total_events": len(self.usage_history),
         } 
+
+    @classmethod
+    def create_new_family(
+        cls,
+        family_id: str,
+        user_id: int,
+        expires_at: datetime,
+        security_context: Any,  # Accept SecurityContext for future use
+        initial_jti: str
+    ) -> "TokenFamily":
+        """
+        Factory method to create a new token family with the initial token.
+        """
+        from src.domain.value_objects.jwt_token import TokenId
+        from src.domain.entities.token_family import TokenUsageRecord, TokenUsageEvent
+        now = datetime.now(timezone.utc)
+        instance = cls(
+            family_id=family_id,
+            user_id=user_id,
+            status=TokenFamilyStatus.ACTIVE,  # Ensure this is the enum, not a string
+            created_at=now,
+            last_used_at=now,
+            expires_at=expires_at,
+            security_score=1.0,
+        )
+        # Initialize runtime caches
+        initial_token = TokenId(initial_jti)
+        instance.set_active_tokens([initial_token])
+        instance.set_revoked_tokens([])
+        usage_record = TokenUsageRecord(
+            token_id=initial_token,
+            event_type=TokenUsageEvent.ISSUED,
+            timestamp=now,
+            client_ip=getattr(security_context, 'client_ip', None),
+            user_agent=getattr(security_context, 'user_agent', None),
+            correlation_id=None
+        )
+        instance.set_usage_history([usage_record])
+        # No encryption yet; fields remain None
+        instance.active_tokens_encrypted = None
+        instance.revoked_tokens_encrypted = None
+        instance.usage_history_encrypted = None
+        return instance 

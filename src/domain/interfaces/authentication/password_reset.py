@@ -14,9 +14,14 @@ Key DDD Principles Applied:
 Password Reset Domain Services:
 - Password Reset Token Service: Secure token generation and validation
 - Password Reset Email Service: Email notification and template rendering
+- Password Reset Request Service: Orchestration of reset request workflow
+- Password Reset Service: Execution of password reset with valid tokens
 """
 
 from abc import ABC, abstractmethod
+from typing import Dict, Optional
+
+from pydantic import EmailStr
 
 from src.domain.entities.user import User
 from src.domain.value_objects.reset_token import ResetToken
@@ -129,5 +134,108 @@ class IPasswordResetEmailService(ABC):
 
         Returns:
             `True` if the email was sent successfully, `False` otherwise.
+        """
+        raise NotImplementedError
+
+
+class IPasswordResetRequestService(ABC):
+    """Interface for password reset request orchestration.
+    
+    This service orchestrates the complete password reset request workflow,
+    including user lookup, rate limiting, token generation, and email delivery.
+    It acts as the primary entry point for password reset requests.
+    
+    DDD Principles:
+    - Single Responsibility: Handles only password reset request orchestration
+    - Ubiquitous Language: Method names reflect business concepts
+    - Domain Events: Publishes events for audit trails and security monitoring
+    - Fail-Safe Security: Implements rate limiting and enumeration protection
+    """
+
+    @abstractmethod
+    async def request_password_reset(
+        self,
+        email: EmailStr,
+        language: str = "en",
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Request a password reset for the given email address.
+        
+        This method orchestrates the complete password reset request workflow:
+        1. Look up the user
+        2. Check rate limits
+        3. Generate secure token
+        4. Send reset email
+        5. Publish domain events
+        
+        Args:
+            email: Email address to send password reset to
+            language: Language code for email localization
+            user_agent: Optional user agent for security tracking
+            ip_address: Optional IP address for security tracking
+            correlation_id: Optional correlation ID for request tracking
+            
+        Returns:
+            Dict containing success message and status
+            
+        Raises:
+            RateLimitExceededError: If rate limit is exceeded
+            EmailServiceError: If email delivery fails
+            ForgotPasswordError: For other operational errors
+        """
+        raise NotImplementedError
+
+
+class IPasswordResetService(ABC):
+    """Interface for password reset execution.
+    
+    This service handles the execution of password resets using valid tokens,
+    including token validation, password strength checking, and user updates.
+    It acts as the primary entry point for password reset execution.
+    
+    DDD Principles:
+    - Single Responsibility: Handles only password reset execution
+    - Ubiquitous Language: Method names reflect business concepts
+    - Domain Events: Publishes events for audit trails and security monitoring
+    - Fail-Safe Security: Implements token validation and password strength checks
+    """
+
+    @abstractmethod
+    async def reset_password(
+        self,
+        token: str,
+        new_password: str,
+        language: str = "en",
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Reset user password using a valid token.
+        
+        This method handles the complete password reset execution workflow:
+        1. Validate token format
+        2. Find user by token
+        3. Validate token against user
+        4. Validate new password strength
+        5. Update password and invalidate token
+        6. Publish domain events
+        
+        Args:
+            token: Password reset token
+            new_password: New password to set
+            language: Language code for error messages
+            user_agent: Optional user agent for security tracking
+            ip_address: Optional IP address for security tracking
+            correlation_id: Optional correlation ID for request tracking
+            
+        Returns:
+            Dict containing success message and status
+            
+        Raises:
+            PasswordResetError: If token is invalid, expired, or password is weak
+            UserNotFoundError: If user associated with token is not found
+            ForgotPasswordError: For other operational errors
         """
         raise NotImplementedError 

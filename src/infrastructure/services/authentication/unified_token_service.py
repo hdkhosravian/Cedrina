@@ -46,7 +46,7 @@ from src.domain.entities.token_family import TokenFamily, TokenFamilyStatus
 from src.domain.value_objects.jwt_token import TokenId
 from src.infrastructure.repositories.token_family_repository import TokenFamilyRepository
 from src.domain.services.authentication.token_family_security_service import TokenFamilySecurityService
-from src.infrastructure.services.authentication.session import SessionService
+from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
 from src.utils.i18n import get_translated_message
 
 logger = get_logger(__name__)
@@ -81,7 +81,7 @@ class UnifiedTokenService:
         db_session: AsyncSession,
         token_family_repository: Optional[TokenFamilyRepository] = None,
         token_family_security_service: Optional[TokenFamilySecurityService] = None,
-        session_service: Optional[SessionService] = None
+        session_service: Optional[UnifiedSessionService] = None
     ):
         """
         Initialize the unified token service.

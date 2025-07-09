@@ -1,82 +1,39 @@
-# Cedrina
+# Cedrina - Advanced Authentication & Authorization Platform
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7.2+-red.svg)](https://redis.io/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Cedrina** is a production-ready FastAPI template built with clean architecture principles and domain-driven design. It provides a robust foundation for building scalable, secure, and maintainable REST APIs and WebSocket applications.
+Cedrina is a production-ready authentication and authorization platform built with FastAPI, featuring advanced security patterns, comprehensive audit trails, and enterprise-grade scalability. The platform implements a unified token architecture with database-only storage and advanced token family security patterns.
 
-## ✨ Features
+## 🚀 Key Features
 
-- 🏗️ **Clean Architecture** with Domain-Driven Design (DDD)
-- 🔐 **Enterprise Authentication** with JWT, OAuth 2.0, and session management
-- 🚀 **High Performance** with async/await and connection pooling
-- 🌍 **Internationalization** (i18n) with multi-language support
-- 🛡️ **Security First** with rate limiting, input validation, and audit logging
-- 📊 **Observability** with structured logging and metrics
-- 🐳 **Docker Ready** with multi-stage builds and production optimization
-- 🧪 **Comprehensive Testing** with 95%+ coverage
-- 📚 **Complete Documentation** with guides and examples
+### **Advanced Security Architecture**
+- **Unified Token Architecture**: Database-only token and session management with token family security
+- **Token Family Security**: Advanced reuse detection and family-wide revocation on compromise
+- **Zero-Trust Validation**: Comprehensive token validation with threat detection
+- **Defense-in-Depth**: Multi-layered security with encrypted storage and audit trails
+- **Rate Limiting**: Sophisticated rate limiting with multiple algorithms and abuse prevention
 
-## 🚀 Quick Start
+### **Authentication & Authorization**
+- **Multi-Provider OAuth**: Google, Microsoft, and Facebook integration
+- **JWT Token Management**: RS256-signed access and refresh tokens with advanced security
+- **Session Management**: Database-only session tracking with activity monitoring
+- **Role-Based Access Control**: Granular permissions with Casbin integration
+- **Password Security**: Bcrypt hashing with additional AES-256-GCM encryption layer
 
-   ```bash
-# Clone the repository
-git clone https://github.com/hdkhosravian/cedrina.git
-   cd cedrina
-
-# Install dependencies
-   poetry install
-
-# Start the application
-     make run-dev
-
-# Verify it's working
-curl http://localhost:8000/api/v1/health
-```
-
-For detailed setup instructions, see the **[Quick Start Guide](docs/getting-started/quick-start.md)**.
-
-## 📚 Documentation
-
-Comprehensive documentation is available in the [`docs/`](docs/) directory:
-
-### Getting Started
-- **[Quick Start Guide](docs/getting-started/quick-start.md)** - Get up and running in minutes
-- **[Installation](docs/getting-started/installation.md)** - Detailed installation instructions
-- **[Configuration](docs/getting-started/configuration.md)** - Environment and application configuration
-
-### Architecture
-- **[Project Structure](docs/architecture/project-structure.md)** - Code organization and DDD principles
-- **[Application Architecture](docs/architecture/application-architecture.md)** - Clean architecture implementation
-- **[Database Design](docs/architecture/database-design.md)** - Database schema and relationships
-
-### Core Features
-- **[Authentication System](docs/features/authentication/README.md)** - Complete authentication documentation
-- **[Rate Limiting](docs/features/rate-limiting/README.md)** - Advanced rate limiting system
-- **[Permissions & Authorization](docs/features/permissions/README.md)** - Role-based access control
-- **[Internationalization (i18n)](docs/features/internationalization.md)** - Multi-language support
-
-### Security
-- **[Security Audit TODO](docs/security/SECURITY_AUDIT_TODO.md)** - Critical security improvements and audit findings
-- **[Authentication Security](docs/authentication/security_fixes.md)** - Security enhancements and fixes
-- **[Input Validation Security](docs/authentication/input_validation_security_fixes.md)** - Input sanitization and validation
-
-### Development
-- **[Development Setup](docs/development/setup.md)** - Local development environment
-- **[Testing Guide](docs/development/testing.md)** - Comprehensive testing strategy
-- **[Code Quality](docs/development/code-quality.md)** - Linting, formatting, and best practices
-- **[API Documentation](docs/development/api-docs.md)** - API endpoints and usage
-
-### Deployment
-- **[Docker Deployment](docs/deployment/docker.md)** - Containerized deployment
-- **[Production Setup](docs/deployment/production.md)** - Production environment configuration
-- **[Environment Management](docs/deployment/environments.md)** - Development, staging, and production
+### **Enterprise Features**
+- **Comprehensive Audit Logging**: Detailed security events and user activity tracking
+- **Internationalization**: Multi-language support with Babel integration
+- **Health Monitoring**: Real-time system health checks and performance metrics
+- **Database Migrations**: Alembic-managed schema evolution
+- **Container Support**: Docker and Docker Compose for easy deployment
 
 ## 🏗️ Architecture
 
-Cedrina follows clean architecture principles with clear separation of concerns:
-
+### **Clean Architecture with DDD**
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Adapters      │    │      Core       │    │    Domain       │
@@ -96,150 +53,275 @@ Cedrina follows clean architecture principles with clear separation of concerns:
                        └─────────────────┘
 ```
 
+### **Unified Token Architecture**
+- **Database-Only Storage**: Eliminates Redis complexity for token/session management
+- **Token Family Security**: Groups related tokens for security correlation and reuse detection
+- **ACID Transactions**: Ensures consistency and data integrity
+- **Advanced Threat Detection**: Real-time security monitoring and incident response
+- **Performance Optimized**: Sub-millisecond response times for high-throughput applications
+
 ## 🔧 Core Components
 
-### Authentication System
-- **Username/Password**: Secure authentication with bcrypt hashing
-- **OAuth 2.0**: Google, Microsoft, and Facebook integration
-- **JWT Tokens**: RS256-signed access and refresh tokens
-- **Session Management**: Secure session tracking and revocation
-- **Rate Limiting**: Protection against brute force attacks
+### **Authentication System**
+- **Username/Password**: Secure authentication with bcrypt hashing and AES encryption
+- **OAuth 2.0**: Google, Microsoft, and Facebook integration with profile synchronization
+- **JWT Tokens**: RS256-signed access and refresh tokens with token family security
+- **Session Management**: Database-only session tracking with activity monitoring
+- **Rate Limiting**: Protection against brute force attacks with multiple algorithms
 
-### Database & Caching
-- **PostgreSQL 16**: Primary database with connection pooling
-- **Redis 7.2**: Caching and session storage
-- **Alembic**: Database migrations
+### **Database & Storage**
+- **PostgreSQL 16**: Primary database with connection pooling and ACID transactions
+- **Redis 7.2**: Optional caching and rate limiting (no longer used for authentication)
+- **Alembic**: Database migrations with version control
 - **SQLModel**: Type-safe ORM with Pydantic integration
 
-### Security Features
+### **Security Features**
 - **🔐 Defense-in-Depth**: Multi-layered security architecture with enterprise-grade implementations
-- **🛡️ Input Validation**: Advanced sanitization with injection attack detection and prevention
-- **⚡ Rate Limiting**: Redis-based protection against brute force and DoS attacks
-- **📊 Audit Logging**: Comprehensive security event logging with SIEM integration
-- **🔑 Password Security**: Bcrypt hashing with optional AES encryption layer
-- **🎫 Token Security**: RS256-signed JWT tokens with ownership validation
-- **🌐 OAuth Security**: CSRF protection and secure OAuth 2.0 implementation
-- **📈 Security Monitoring**: Real-time threat detection and risk assessment
-- **⏱️ Timing Attack Prevention**: Configurable response timing to prevent timing attacks
+- **🛡️ Token Family Security**: Advanced reuse detection and family-wide revocation
+- **🔍 Comprehensive Auditing**: Detailed security events and forensic analysis
+- **⚡ Performance Optimized**: Sub-millisecond response times for high-throughput applications
+- **🌐 Internationalization**: Multi-language support with security-focused translations
 
-## 🛠️ Development
+## 📦 Installation
 
-### Prerequisites
-- Python 3.12+
-- Poetry
-- Docker
-- PostgreSQL 16
-- Redis 7.2
+### **Prerequisites**
+- Python 3.11+
+- PostgreSQL 16+
+- Redis 7.2+ (optional, for rate limiting)
+- Docker & Docker Compose (optional)
 
-### Commands
+### **Quick Start with Docker**
 
-     ```bash
-# Development
-make run-dev              # Start with Docker
-make run-dev-local        # Start locally
-make test                 # Run tests
-make test-cov            # Run tests with coverage
+```bash
+# Clone the repository
+git clone https://github.com/your-org/cedrina.git
+cd cedrina
 
-# Code Quality
-make format              # Format code
-make lint                # Lint code
-make type-check          # Type checking
+# Start with Docker Compose
+docker-compose up -d
 
-# Database
-make db-migrate          # Apply migrations
-make db-rollback         # Rollback migrations
+# Run database migrations
+docker-compose exec api alembic upgrade head
 
-# Translations
-make compile-translations # Compile i18n files
+# Create admin user
+docker-compose exec api python -m src.scripts.create_admin
 ```
 
-## 🚀 Deployment
+### **Manual Installation**
 
-### Docker Deployment
-     ```bash
-# Build production image
-     make build-prod
+```bash
+# Clone the repository
+git clone https://github.com/your-org/cedrina.git
+cd cedrina
 
-# Run in production
-     make run-prod
-     ```
+# Install dependencies
+poetry install
 
-### Environment Configuration
-- **Development**: `.env.development`
-- **Staging**: `.env.staging`
-- **Production**: `.env.production`
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Run database migrations
+alembic upgrade head
+
+# Start the application
+uvicorn src.main:app --reload
+```
+
+## 🔧 Configuration
+
+### **Environment Variables**
+
+```bash
+# Database Configuration
+DATABASE_URL=postgresql://user:password@localhost:5432/cedrina
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=cedrina
+POSTGRES_USER=cedrina
+POSTGRES_PASSWORD=your_password
+
+# Redis Configuration (optional for rate limiting)
+REDIS_URL=redis://localhost:6379/0
+
+# JWT Configuration
+JWT_PRIVATE_KEY_PATH=/path/to/private.pem
+JWT_PUBLIC_KEY_PATH=/path/to/public.pem
+JWT_ISSUER=https://api.example.com
+JWT_AUDIENCE=cedrina:api:v1
+
+# OAuth Configuration
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+MICROSOFT_CLIENT_ID=your_microsoft_client_id
+MICROSOFT_CLIENT_SECRET=your_microsoft_client_secret
+FACEBOOK_CLIENT_ID=your_facebook_client_id
+FACEBOOK_CLIENT_SECRET=your_facebook_client_secret
+
+# Security Configuration
+SESSION_INACTIVITY_TIMEOUT_MINUTES=30
+MAX_CONCURRENT_SESSIONS_PER_USER=5
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+```
+
+## 🚀 API Usage
+
+### **Authentication Endpoints**
+
+```bash
+# User Registration
+POST /api/v1/auth/register
+{
+  "username": "john_doe",
+  "email": "john@example.com",
+  "password": "secure_password"
+}
+
+# User Login
+POST /api/v1/auth/login
+{
+  "username": "john_doe",
+  "password": "secure_password"
+}
+
+# Refresh Token
+POST /api/v1/auth/refresh
+{
+  "refresh_token": "your_refresh_token"
+}
+
+# OAuth Login
+GET /api/v1/auth/oauth/google
+GET /api/v1/auth/oauth/microsoft
+GET /api/v1/auth/oauth/facebook
+
+# Password Reset
+POST /api/v1/auth/forgot-password
+{
+  "email": "john@example.com"
+}
+
+# Change Password
+POST /api/v1/auth/change-password
+{
+  "current_password": "old_password",
+  "new_password": "new_secure_password"
+}
+```
+
+### **Protected Endpoints**
+
+```bash
+# Get current user
+GET /api/v1/auth/me
+Authorization: Bearer your_access_token
+
+# Logout
+POST /api/v1/auth/logout
+Authorization: Bearer your_access_token
+
+# Admin endpoints
+GET /api/v1/admin/users
+Authorization: Bearer admin_access_token
+```
 
 ## 🧪 Testing
 
-Cedrina includes comprehensive testing with 95%+ coverage:
+### **Run All Tests**
 
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: API endpoint testing
-- **Feature Tests**: End-to-end workflow testing
-- **Performance Tests**: Load and stress testing
-
-   ```bash
-# Run all tests
-make test
+```bash
+# Run with coverage
+pytest --cov=src --cov-report=html
 
 # Run specific test categories
-poetry run pytest tests/unit/ -v
-poetry run pytest tests/integration/ -v
-poetry run pytest tests/feature/ -v
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/feature/
 ```
 
-## 📊 Performance
+### **Test Categories**
 
-- **Async/Await**: Non-blocking I/O operations
-- **Connection Pooling**: Optimized database connections
-- **Caching**: Redis-based caching strategies
-- **Rate Limiting**: Multiple algorithms (fixed-window, sliding-window, token-bucket)
+- **Unit Tests**: Individual component testing with mocked dependencies
+- **Integration Tests**: End-to-end workflow testing
+- **Feature Tests**: Complete user journey testing
+- **Security Tests**: Authentication and authorization testing
+- **Performance Tests**: Load and stress testing
 
-## 🔗 API Endpoints
+## 📊 Monitoring & Health
 
-### Authentication
-- `POST /api/v1/auth/register` - User registration
-- `POST /api/v1/auth/login` - User login
-- `POST /api/v1/auth/oauth` - OAuth authentication
-- `DELETE /api/v1/auth/logout` - User logout
-- `PUT /api/v1/auth/change-password` - Password change
+### **Health Check**
 
-### System
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/metrics` - Application metrics
-- `WS /ws/health` - WebSocket health check
+```bash
+GET /health
+Authorization: Bearer admin_token
 
-## 🌍 Internationalization
-
-Supports multiple languages:
-- **English** (`en`)
-- **Spanish** (`es`)
-- **Persian** (`fa`)
-- **Arabic** (`ar`)
-
-Usage:
-    ```bash
-# API with language header
-curl -H "Accept-Language: fa" http://localhost:8000/api/v1/health
-
-# API with query parameter
-curl http://localhost:8000/api/v1/health?lang=ar
+Response:
+{
+  "status": "ok",
+  "env": "production",
+  "message": "System operational",
+  "services": {
+    "database": {"status": "healthy"},
+    "redis": {"status": "healthy"}
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
 ```
+
+### **Monitoring Scripts**
+
+```bash
+# Session monitoring
+/usr/local/bin/monitor_sessions.sh
+
+# Performance metrics
+curl -H "Authorization: Bearer admin_token" /api/v1/admin/metrics
+```
+
+## 🔒 Security Features
+
+### **Token Family Security**
+- **Reuse Detection**: Identifies and responds to token reuse attacks
+- **Family-wide Revocation**: Compromises entire families on security violations
+- **Threat Pattern Analysis**: Detects sophisticated attack patterns
+- **Audit Trail Generation**: Comprehensive logging for compliance
+
+### **Advanced Security Patterns**
+- **Zero-Trust Validation**: Validates all tokens with comprehensive security checks
+- **Defense-in-Depth**: Multiple security layers with encrypted storage
+- **Rate Limiting**: Sophisticated abuse prevention with multiple algorithms
+- **Session Management**: Database-only storage with activity tracking
+
+## 📚 Documentation
+
+- [API Reference](docs/reference/api-reference.md)
+- [Architecture Guide](docs/architecture/)
+- [Security Guide](docs/security/)
+- [Deployment Guide](docs/deployment/)
+- [Development Guide](docs/development/)
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Guidelines
-- Follow the established architecture patterns
-- Add comprehensive tests for new features
-- Update documentation for changes
-- Ensure code quality with linting and formatting
-- Follow the testing strategy
+### **Development Setup**
+
+```bash
+# Install development dependencies
+poetry install --with dev
+
+# Set up pre-commit hooks
+pre-commit install
+
+# Run linting
+flake8 src/
+black src/
+isort src/
+
+# Run type checking
+mypy src/
+```
 
 ## 📄 License
 
@@ -247,18 +329,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: Check the [documentation](docs/)
-- **Issues**: Create an issue on [GitHub](https://github.com/hdkhosravian/cedrina/issues)
-- **Discussions**: Join the [GitHub Discussions](https://github.com/hdkhosravian/cedrina/discussions)
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/your-org/cedrina/issues)
+- **Security**: [SECURITY.md](SECURITY.md)
 
 ## 🙏 Acknowledgments
 
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern, fast web framework
-- [SQLModel](https://sqlmodel.tiangolo.com/) - SQL databases in Python, designed for simplicity and compatibility
-- [Pydantic](https://pydantic-docs.helpmanual.io/) - Data validation using Python type annotations
-- [Alembic](https://alembic.sqlalchemy.org/) - Database migration tool
-- [Redis](https://redis.io/) - In-memory data structure store
-
----
-
-**Built with ❤️ using clean architecture and domain-driven design principles.**
+- [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
+- [SQLModel](https://sqlmodel.tiangolo.com/) for type-safe database operations
+- [Pydantic](https://pydantic-docs.helpmanual.io/) for data validation
+- [Alembic](https://alembic.sqlalchemy.org/) for database migrations
+- [Casbin](https://casbin.org/) for authorization management

@@ -20,7 +20,7 @@ from src.infrastructure.database.database import (
 )
 from src.core.config.settings import settings
 from src.domain.entities.user import User
-from src.infrastructure.services.authentication.token import TokenService
+from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 from src.main import app
 from src.infrastructure.database.async_db import get_async_db_dependency, engine as async_engine
 from src.infrastructure.redis import get_redis
@@ -117,8 +117,9 @@ def client():
 
 
 @pytest.fixture
-async def admin_headers(async_client: AsyncClient, admin_user: User):
-    token_service = TokenService()
+async def admin_headers(async_client: AsyncClient, admin_user: User, async_session: AsyncSession):
+    """Create admin headers with proper database session injection."""
+    token_service = DomainTokenService(db_session=async_session)
     token = await token_service.create_access_token(admin_user)
     headers = {"Authorization": f"Bearer {token}"}
     return headers
@@ -144,7 +145,7 @@ def mock_enforce(mocker: MockerFixture):
 
 @pytest_asyncio.fixture(scope="function")
 async def mock_token_service():
-    with patch("src.infrastructure.services.authentication.token.TokenService", autospec=True) as mock:
+    with patch("src.infrastructure.services.authentication.domain_token_service.DomainTokenService", autospec=True) as mock:
         yield mock
 
 
@@ -217,15 +218,65 @@ async def async_session():
     from src.infrastructure.database.async_db import _build_async_url
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
-
+    
+    # Build fresh async URL
     async_url = _build_async_url()
+    
+    # Create a fresh engine for this test
     test_engine = create_async_engine(async_url, echo=False, future=True, pool_pre_ping=True)
+    
+    # Create a fresh session factory
     TestAsyncSessionFactory = sessionmaker(
         bind=test_engine, class_=AsyncSession, expire_on_commit=False
     )
+    
     async with TestAsyncSessionFactory() as session:
         try:
             yield session
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
+    
     await test_engine.dispose()
+
+
+@pytest.fixture
+def admin_user():
+    """Create a test admin user."""
+    return User(
+        id=1,
+        username="admin",
+        email="admin@example.com",
+        role="admin",
+        is_active=True,
+    )
+
+
+@pytest.fixture
+def regular_user():
+    """Create a test regular user."""
+    return User(
+        id=2,
+        username="user",
+        email="user@example.com",
+        role="user",
+        is_active=True,
+    )
+
+
+def create_db_and_tables():
+    """Create database tables for testing."""
+    from src.infrastructure.database.database import engine
+    from src.domain.entities.user import User
+    from src.domain.entities.session import Session
+    from src.domain.entities.token_family import TokenFamily
+    
+    # Import all models to ensure they're registered
+    from src.domain.entities import user, session, token_family
+    
+    # Create tables
+    User.metadata.create_all(bind=engine)
+    Session.metadata.create_all(bind=engine)
+    TokenFamily.metadata.create_all(bind=engine)

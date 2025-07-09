@@ -11,7 +11,7 @@ from src.adapters.api.v1.auth.utils import create_token_pair
 from src.core.config.settings import settings
 from src.domain.entities.user import Role, User
 from src.domain.value_objects.jwt_token import TokenId
-from src.infrastructure.services.authentication.token import TokenService
+from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 
 
 class TestCreateTokenPair:
@@ -20,7 +20,7 @@ class TestCreateTokenPair:
     @pytest.fixture
     def mock_token_service(self):
         """Mock token service for testing."""
-        service = AsyncMock(spec=TokenService)
+        service = AsyncMock(spec=DomainTokenService)
         service.create_access_token = AsyncMock(return_value="mock_access_token")
         service.create_refresh_token = AsyncMock(return_value="mock_refresh_token")
         return service

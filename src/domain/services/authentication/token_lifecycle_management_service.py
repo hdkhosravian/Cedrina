@@ -40,6 +40,7 @@ from typing import Dict, Any, Optional, List, Tuple
 import asyncio
 from dataclasses import dataclass
 from enum import Enum
+import uuid
 
 import jwt
 from jwt import encode as jwt_encode, decode as jwt_decode, PyJWTError
@@ -219,7 +220,7 @@ class TokenLifecycleManagementService:
                 raise SecurityViolationError("Critical security threat detected")
             
             # Generate secure token family
-            family_id = TokenId.generate().value
+            family_id = str(uuid.uuid4())
             shared_jti = TokenId.generate().value
             
             # Calculate expiration time
@@ -255,9 +256,9 @@ class TokenLifecycleManagementService:
             
             # Publish domain event for security monitoring
             await self._event_publisher.publish(
-                TokenFamilyCreatedEvent(
-                    family_id=family_id,
+                TokenFamilyCreatedEvent.create(
                     user_id=request.user.id,
+                    family_id=family_id,
                     security_context=request.security_context,
                     correlation_id=request.correlation_id
                 )
@@ -557,6 +558,32 @@ class TokenLifecycleManagementService:
                 get_translated_message("token_validation_failed", language)
             )
     
+    async def validate_access_token(self, token: str, language: str = "en") -> dict:
+        """
+        Validates a JWT access token and returns its payload.
+        Args:
+            token: The JWT access token to validate
+            language: Language for error messages
+        Returns:
+            dict: The decoded token payload if valid
+        Raises:
+            AuthenticationError: If the token is invalid or expired
+        """
+        from src.core.config.settings import settings
+        import jwt
+        from jwt import PyJWTError
+        try:
+            payload = jwt.decode(
+                token,
+                settings.JWT_PUBLIC_KEY,
+                algorithms=["RS256"],
+                audience=settings.JWT_AUDIENCE,
+                options={"verify_exp": True}
+            )
+            return payload
+        except PyJWTError as e:
+            raise AuthenticationError(f"Invalid token: {str(e)}")
+
     # === Private Security Methods ===
     
     async def _assess_security_threat(

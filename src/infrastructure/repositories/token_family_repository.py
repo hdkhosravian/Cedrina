@@ -29,6 +29,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 import json
 import asyncio
+from enum import Enum
 
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -148,6 +149,50 @@ class TokenFamilyRepository(ITokenFamilyRepository):
                 user_id=user_id,
                 error=str(e),
                 correlation_id=correlation_id
+            )
+            raise
+    
+    async def create_token_family(self, token_family: TokenFamily) -> TokenFamily:
+        """
+        Persist a new TokenFamily instance to the database.
+        Args:
+            token_family: The TokenFamily domain entity to persist
+        Returns:
+            TokenFamily: The persisted entity (with DB-generated fields)
+        """
+        def make_naive(dt):
+            if dt is None:
+                return None
+            if dt.tzinfo is not None:
+                return dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
+        try:
+            # Convert all datetime fields to naive UTC
+            token_family.created_at = make_naive(token_family.created_at)
+            token_family.last_used_at = make_naive(token_family.last_used_at)
+            token_family.compromised_at = make_naive(token_family.compromised_at)
+            token_family.expires_at = make_naive(token_family.expires_at)
+            # Ensure status is the enum value, not the name
+            if isinstance(token_family.status, Enum):
+                token_family.status = token_family.status.value
+            await self._encrypt_and_store_token_family_data(token_family)
+            self.db_session.add(token_family)
+            # Don't commit here - let the calling service manage the transaction
+            # await self.db_session.commit()
+            # await self.db_session.refresh(token_family)
+            logger.info(
+                "Token family added to session (via create_token_family)",
+                family_id=token_family.family_id[:8] + "...",
+                user_id=token_family.user_id
+            )
+            return token_family
+        except Exception as e:
+            # Don't rollback here - let the calling service manage the transaction
+            # await self.db_session.rollback()
+            logger.error(
+                "Failed to add token family to session (via create_token_family)",
+                user_id=token_family.user_id,
+                error=str(e)
             )
             raise
     

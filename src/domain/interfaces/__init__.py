@@ -30,12 +30,16 @@ from .authentication import (
     IPasswordChangeService,
     IPasswordResetTokenService,
     IPasswordResetEmailService,
+    IPasswordResetRequestService,
+    IPasswordResetService,
     IOAuthService,
     IErrorClassificationService,
 )
 from .authentication.email_confirmation import (
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
+    IEmailConfirmationRequestService,
+    IEmailConfirmationService,
 )
 
 # Token management interfaces
@@ -60,10 +64,14 @@ __all__ = [
     "IPasswordChangeService",
     "IPasswordResetTokenService",
     "IPasswordResetEmailService",
+    "IPasswordResetRequestService",
+    "IPasswordResetService",
     "IOAuthService",
     "IErrorClassificationService",
     "IEmailConfirmationTokenService",
     "IEmailConfirmationEmailService",
+    "IEmailConfirmationRequestService",
+    "IEmailConfirmationService",
     
     # Token management interfaces
     "ITokenService",
