@@ -16,10 +16,10 @@ logger = structlog.get_logger(__name__)
 
 
 class InMemoryEventPublisher(IEventPublisher):
-    """In-memory event publisher for development and testing.
+    """In-memory event publisher for development.
     
     This implementation stores events in memory and can be used for:
-    - Development and testing environments
+    - Development environments
     - Event replay and debugging
     - Event filtering and inspection
     
@@ -185,7 +185,7 @@ class InMemoryEventPublisher(IEventPublisher):
         return len(self._published_events)
     
     def get_events_by_type(self, event_type: type) -> List[BaseDomainEvent]:
-        """Get published events by type (for testing compatibility).
+        """Get published events by type.
         
         Args:
             event_type: Type of events to retrieve
@@ -196,7 +196,7 @@ class InMemoryEventPublisher(IEventPublisher):
         return [e for e in self._published_events if isinstance(e, event_type)]
     
     def get_events_by_user(self, user_id: int) -> List[BaseDomainEvent]:
-        """Get published events for a specific user (for testing compatibility).
+        """Get published events for a specific user.
         
         Args:
             user_id: User ID to filter by

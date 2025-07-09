@@ -3,6 +3,7 @@ import pytest_asyncio
 
 from src.main import app
 
+# Removed Clean service imports since they were causing 422 errors and were replaced with direct function calls
 
 # Define database setup functions directly since the import path is incorrect
 async def create_all_tables():
@@ -86,3 +87,39 @@ async def mock_password_reset_service():
     # Clean up
     if get_password_reset_service in app.dependency_overrides:
         del app.dependency_overrides[get_password_reset_service]
+
+
+@pytest_asyncio.fixture
+async def mock_email_confirmation_service():
+    """Provides a mocked email confirmation service."""
+    from src.infrastructure.dependency_injection.auth_dependencies import (
+        get_email_confirmation_service,
+    )
+
+    mock_service = AsyncMock()
+
+    app.dependency_overrides[get_email_confirmation_service] = lambda: mock_service
+
+    yield mock_service
+
+    if get_email_confirmation_service in app.dependency_overrides:
+        del app.dependency_overrides[get_email_confirmation_service]
+
+
+@pytest_asyncio.fixture
+async def mock_email_confirmation_request_service():
+    """Provides a mocked email confirmation request service."""
+    from src.infrastructure.dependency_injection.auth_dependencies import (
+        get_email_confirmation_request_service,
+    )
+
+    mock_service = AsyncMock()
+
+    app.dependency_overrides[get_email_confirmation_request_service] = (
+        lambda: mock_service
+    )
+
+    yield mock_service
+
+    if get_email_confirmation_request_service in app.dependency_overrides:
+        del app.dependency_overrides[get_email_confirmation_request_service]

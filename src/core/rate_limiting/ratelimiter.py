@@ -151,8 +151,7 @@ def get_limiter() -> Limiter:
     """Factory function for the rate limiter.
 
     This function creates and returns a Limiter instance based on the application
-    settings. This factory pattern allows for late initialization, making it
-    compatible with testing environments where settings might be monkey-patched.
+    settings. This factory pattern allows for late initialization.
 
     Returns:
         Limiter: A configured slowapi.Limiter instance.

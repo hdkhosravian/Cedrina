@@ -39,10 +39,6 @@ async def test_login_endpoint_is_rate_limited(client, mocker):
     )
 
     # Override the dependency in the app
-    from src.infrastructure.dependency_injection.auth_dependencies import CleanAuthService
-    from src.main import app
-
-    # Override the actual dependency that creates the service
     from src.infrastructure.dependency_injection.auth_dependencies import get_user_authentication_service
     app.dependency_overrides[get_user_authentication_service] = lambda user_repository=None, event_publisher=None: mock_auth_service
 

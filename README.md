@@ -120,6 +120,7 @@ Cedrina follows clean architecture principles with clear separation of concerns:
 - **🎫 Token Security**: RS256-signed JWT tokens with ownership validation
 - **🌐 OAuth Security**: CSRF protection and secure OAuth 2.0 implementation
 - **📈 Security Monitoring**: Real-time threat detection and risk assessment
+- **⏱️ Timing Attack Prevention**: Configurable response timing to prevent timing attacks
 
 ## 🛠️ Development
 

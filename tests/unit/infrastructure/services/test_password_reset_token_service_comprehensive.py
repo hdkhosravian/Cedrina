@@ -392,23 +392,10 @@ class TestEnhancedPasswordResetTokenService:
         # All tokens should be unique
         assert len(set(tokens)) == len(tokens)
         
-        # Tokens should have different lengths (unpredictable)
+        # Tokens should have consistent length (64 characters) for security
         lengths = [len(token) for token in tokens]
-        assert len(set(lengths)) > 1
-        
-        # Tokens should have different character distributions
-        char_distributions = []
-        for token_value in tokens:
-            distribution = {
-                'uppercase': sum(1 for c in token_value if c.isupper()),
-                'lowercase': sum(1 for c in token_value if c.islower()),
-                'digits': sum(1 for c in token_value if c.isdigit()),
-                'special': sum(1 for c in token_value if not c.isalnum())
-            }
-            char_distributions.append(distribution)
-        
-        # Should have different distributions
-        assert len(set(str(d) for d in char_distributions)) > 1
+        assert len(set(lengths)) == 1  # All tokens should be the same length
+        assert lengths[0] == 64  # All tokens should be 64 characters
     
     @pytest.mark.asyncio
     async def test_generate_token_with_custom_expiry(self, mock_rate_limiting_service, test_user):

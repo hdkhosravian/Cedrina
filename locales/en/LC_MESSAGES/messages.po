@@ -158,7 +158,9 @@ msgstr "Password change failed due to an internal error"
 msgid "password_change_service_unavailable"
 msgstr "Password change service is temporarily unavailable"
 
-# Email functionality (2025-06-28)
+msgid "missing_authorization_header"
+msgstr "Authorization header is missing"
+
 
 msgid "password_reset_email_subject"
 msgstr "Password Reset Request - Cedrina"
@@ -327,3 +329,23 @@ msgstr "Token expiry timestamp cannot be empty"
 msgid "token_expiry_must_be_timezone_aware"
 msgstr "Token expiry timestamp must be timezone-aware"
 
+
+msgid "email_confirmation_subject"
+msgstr "Confirm your Cedrina account"
+
+msgid "confirmation_email_sent"
+msgstr "If the email is registered, a confirmation link has been sent"
+
+msgid "email_confirmation_required"
+msgstr "Please confirm your email before logging in"
+
+msgid "email_confirmed_success"
+msgstr "Email confirmed successfully"
+
+# Authentication account lockout and expiration (2025-01-27)
+
+msgid "account_locked"
+msgstr "Account is locked due to too many failed login attempts. Please try again later or contact support."
+
+msgid "expired_credentials"
+msgstr "Your credentials have expired. Please reset your password to continue."

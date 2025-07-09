@@ -1,24 +1,7 @@
-"""Authentication service interfaces for the authentication bounded context.
+"""Authentication Interfaces.
 
-This module provides clean access to all authentication service interfaces
-following Domain-Driven Design principles. These interfaces encapsulate the
-business logic for user authentication, registration, logout, and password
-management operations.
-
-Key DDD Principles Applied:
-- Single Responsibility: Each interface has one clear purpose
-- Ubiquitous Language: Interface names reflect business domain concepts
-- Dependency Inversion: Domain depends on abstractions, not concretions
-- Bounded Context: All interfaces belong to the authentication domain
-- Interface Segregation: Clients depend only on interfaces they use
-
-Authentication Domain Services:
-- User Authentication: Core authentication logic with security features
-- User Registration: User account creation and validation
-- User Logout: Session termination and token revocation
-- Password Change: Secure password modification with validation
-- Password Reset: Password reset workflows and token management
-- OAuth Integration: Third-party authentication providers
+This module defines interfaces for authentication-related services following
+Domain-Driven Design principles and dependency inversion.
 """
 
 # Core authentication interfaces
@@ -32,9 +15,14 @@ from .password_reset import (
     IPasswordResetTokenService,
     IPasswordResetEmailService,
 )
+from .email_confirmation import (
+    IEmailConfirmationTokenService,
+    IEmailConfirmationEmailService,
+)
 
 # OAuth interfaces
 from .oauth import IOAuthService
+from .error_classification import IErrorClassificationService
 
 __all__ = [
     # Core authentication interfaces
@@ -46,7 +34,10 @@ __all__ = [
     # Password management interfaces
     "IPasswordResetTokenService",
     "IPasswordResetEmailService",
-    
+    "IEmailConfirmationTokenService",
+    "IEmailConfirmationEmailService",
+
     # OAuth interfaces
     "IOAuthService",
-] 
+    "IErrorClassificationService",
+]

@@ -22,7 +22,6 @@ class TestEmailService:
     def email_settings(self):
         """Create test email settings."""
         return EmailSettings(
-            EMAIL_TEST_MODE=True,
             SMTP_HOST="localhost",
             SMTP_PORT=587,
             SMTP_USERNAME="test",
@@ -127,27 +126,9 @@ class TestEmailService:
                     email_service.render_template('bad_template.html')
     
     @pytest.mark.asyncio
-    async def test_send_email_success_test_mode(self, email_service, mock_user):
-        """Test successful email sending in test mode."""
+    async def test_send_email_success(self, email_service, mock_user):
+        """Test successful email sending."""
         # Arrange
-        email_service.settings.EMAIL_TEST_MODE = True
-        
-        # Act
-        result = await email_service.send_email(
-            to_email=mock_user.email,
-            subject="Test Subject",
-            html_content="<h1>Test Content</h1>",
-            text_content="Test Content"
-        )
-        
-        # Assert
-        assert result is True
-    
-    @pytest.mark.asyncio
-    async def test_send_email_success_production_mode(self, email_service, mock_user):
-        """Test successful email sending in production mode."""
-        # Arrange
-        email_service.settings.EMAIL_TEST_MODE = False
         mock_fastmail = AsyncMock()
         email_service.fastmail = mock_fastmail
         
@@ -163,11 +144,12 @@ class TestEmailService:
         assert result is True
         mock_fastmail.send_message.assert_called_once()
     
+
+    
     @pytest.mark.asyncio
-    async def test_send_email_failure_production_mode(self, email_service, mock_user):
-        """Test email sending failure in production mode."""
+    async def test_send_email_failure(self, email_service, mock_user):
+        """Test email sending failure."""
         # Arrange
-        email_service.settings.EMAIL_TEST_MODE = False
         mock_fastmail = AsyncMock()
         mock_fastmail.send_message.side_effect = Exception("SMTP Error")
         email_service.fastmail = mock_fastmail
@@ -182,17 +164,17 @@ class TestEmailService:
             )
     
     @pytest.mark.asyncio
-    async def test_send_email_production_mode(self, email_service):
-        """Test email sending in production mode fails when FastMail not configured."""
+    async def test_send_email_fastmail_not_configured(self, email_service):
+        """Test email sending fails when FastMail not configured."""
         # Arrange
-        email_service.settings.EMAIL_TEST_MODE = False
+        email_service.fastmail = None  # Set FastMail to None to simulate not configured
         to_email = "test@example.com"
         subject = "Test Subject"
         html_content = "<h1>Test</h1>"
         text_content = "Test"
 
         # Act & Assert
-        with pytest.raises(EmailServiceError, match="Failed to send email"):
+        with pytest.raises(EmailServiceError, match="FastMail not configured"):
             await email_service.send_email(
                 to_email=to_email,
                 subject=subject,
@@ -225,7 +207,6 @@ class TestEmailService:
         # Test that invalid configuration raises validation error
         with pytest.raises(Exception):  # Pydantic ValidationError
             invalid_settings = EmailSettings(
-                EMAIL_TEST_MODE=False,
                 SMTP_HOST="",  # Invalid empty host
                 FROM_EMAIL="invalid-email"  # Invalid email format
             )

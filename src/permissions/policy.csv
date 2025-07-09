@@ -5,9 +5,8 @@
 
 p, admin, /health, GET, *, *, *
 p, admin, /metrics, GET, *, *, *
-p, admin, /docs, GET, *, *, *
-p, admin, /redoc, GET, *, *, *
-p, admin, /openapi.json, GET, *, *, *
+# Note: /docs, /redoc, and /openapi.json permissions are now handled at the endpoint level
+# based on environment (no permission check in dev/test, admin required in prod/staging)
 p, admin, /admin/policies, GET, *, *, *
 p, admin, /admin/policies, POST, *, *, *
 p, user, /profile, GET, *, *, *

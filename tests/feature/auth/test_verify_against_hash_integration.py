@@ -6,6 +6,7 @@ These tests validate the security implementation and proper integration with the
 """
 
 import pytest
+import uuid
 
 from src.domain.value_objects.password import Password
 from src.utils.security import hash_password, verify_password
@@ -148,13 +149,14 @@ class TestVerifyAgainstHashIntegration:
         mock_event_publisher = AsyncMock()
         auth_service = UserAuthenticationService(mock_user_repo, mock_event_publisher)
         
-        # Create test user with known password
+        # Create test user with unique data to avoid conflicts
+        unique = uuid.uuid4().hex[:8]
         plain_password = "SecureP@ssw0rd947!"
         hashed_password = hash_password(plain_password)
         user = User(
             id=1,
-            username="testuser",
-            email="test@example.com",
+            username=f"testuser_{unique}",
+            email=f"test{unique}@example.com",
             hashed_password=hashed_password,
             role=Role.USER,
             is_active=True

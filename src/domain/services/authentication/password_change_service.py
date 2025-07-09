@@ -162,7 +162,12 @@ class PasswordChangeService(IPasswordChangeService):
                 error_type=type(e).__name__,
                 error_message=str(e)
             )
-            raise
+            # For ValueError (password validation errors), convert to PasswordPolicyError
+            # to provide a more appropriate error type for API responses
+            if isinstance(e, ValueError):
+                raise PasswordPolicyError(str(e)) from e
+            else:
+                raise
             
         except Exception as e:
             # Log unexpected errors

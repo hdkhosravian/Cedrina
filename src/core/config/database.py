@@ -38,7 +38,9 @@ class DatabaseSettings(BaseSettings):
     POSTGRES_MAX_OVERFLOW: int = Field(ge=0, default=20)
     POSTGRES_POOL_TIMEOUT: float = Field(ge=1.0, default=5.0)
     DATABASE_URL: str = ""
+    TEST_DATABASE_URL: str = ""
     PGCRYPTO_KEY: SecretStr
+    EMAIL_CONFIRMATION_ENABLED: bool = False
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -68,4 +70,34 @@ class DatabaseSettings(BaseSettings):
             f"{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
         )
         logger.debug("Assembled DATABASE_URL (password masked for " "security).")
+        return url
+
+    @field_validator("TEST_DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_test_db_url(cls, v: str | None, info: ValidationInfo) -> str:
+        """Assembles the test database connection URL if not provided explicitly.
+        Ensures sensitive data like passwords are handled securely.
+
+        Args:
+            v: Explicitly provided URL or None.
+            info: Validation context with other field values.
+
+        Returns:
+            Assembled or provided test database URL.
+
+        """
+        if v:
+            return v
+
+        values = info.data
+        password = values.get("POSTGRES_PASSWORD")
+        if not password:
+            logger.warning("POSTGRES_PASSWORD not set during TEST_DATABASE_URL assembly.")
+
+        url = (
+            f"postgresql+psycopg2://{values.get('POSTGRES_USER')}:"
+            f"{password}@{values.get('POSTGRES_HOST')}:"
+            f"{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB_TEST')}"
+        )
+        logger.debug("Assembled TEST_DATABASE_URL (password masked for " "security).")
         return url

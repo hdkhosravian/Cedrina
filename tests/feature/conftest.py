@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,10 +50,12 @@ def client():
             )
         else:
             print("Non-admin token detected")
+            # Use unique data to avoid conflicts with other tests
+            unique = uuid.uuid4().hex[:8]
             return User(
                 id=1,
-                username="testuser",
-                email="test@example.com",
+                username=f"testuser_{unique}",
+                email=f"test{unique}@example.com",
                 hashed_password="hashed_password",
                 role=Role.USER,
                 department="IT",
@@ -67,27 +70,27 @@ def client():
     # Mock Casbin enforcer to allow admin actions for feature tests
     from unittest.mock import patch
 
-    def mock_enforce(self, *args, **kwargs):
-        print(f"Mock enforce called with args: {args}, kwargs: {kwargs}")
-        # Check if request object is available in kwargs or args to get headers
+    def mock_enforce(self, subject, object_name, action, department=None, location=None, time_of_day=None, request=None):
+        """Mock enforce function with explicit signature matching ABAC usage."""
+        print(f"Mock enforce called with subject: {subject}, object: {object_name}, action: {action}")
+        print(f"ABAC attributes - department: {department}, location: {location}, time_of_day: {time_of_day}")
+        
+        # Check if request object is available to get headers
         auth_header = None
-        request = None
-        if "request" in kwargs:
-            request = kwargs["request"]
-        elif len(args) > 6 and hasattr(args[6], "headers"):
-            request = args[6]
         if request:
             auth_header = request.headers.get("Authorization", "")
             print(f"Authorization header from request in enforce: {auth_header}")
-        if len(args) > 1 and "/admin/policies" in args[1]:
+        
+        if object_name and "/admin/policies" in str(object_name):
             print("Mock enforce: Allowing access to admin policy endpoints")
             return True
-        elif len(args) > 0 and args[0] == "admin":
+        elif subject == "admin":
             print("Mock enforce: Allowing admin access based on subject")
             return True
         print("Mock enforce: Allowing access to endpoints")
         return True
 
+    # Patch the specific Casbin enforcer method
     patch("casbin.Enforcer.enforce", mock_enforce).start()
 
     return TestClient(app)
@@ -101,10 +104,12 @@ async def db_session():
 
 @pytest.fixture(scope="function")
 def regular_user():
+    # Use unique data to avoid conflicts with other tests
+    unique = uuid.uuid4().hex[:8]
     user = User(
         id=1,
-        username="testuser",
-        email="test@example.com",
+        username=f"testuser_{unique}",
+        email=f"test{unique}@example.com",
         hashed_password="hashed_password",
         role=Role.USER,
         department="IT",

@@ -57,11 +57,11 @@ class PasswordEncryptionService(IPasswordEncryptionService):
         """Initialize password encryption service with secure key handling.
         
         Args:
-            encryption_key: Optional encryption key for testing. If None, uses PGCRYPTO_KEY
+            encryption_key: Optional encryption key. If None, uses PGCRYPTO_KEY
             
         Security Notes:
             - Key is loaded from secure configuration
-            - Falls back to generated key only in test environments
+            - Falls back to generated key if configuration is invalid
             - Key validation ensures proper format and length
         """
         self._logger = logger.bind(
@@ -71,10 +71,10 @@ class PasswordEncryptionService(IPasswordEncryptionService):
         
         try:
             if encryption_key:
-                # For testing: use provided key
+                # Use provided key
                 key = encryption_key.encode()
             else:
-                # Production: use configured PGCRYPTO_KEY
+                # Use configured PGCRYPTO_KEY
                 key = settings.PGCRYPTO_KEY.get_secret_value().encode()
             
             # Validate key format (Fernet requires 32 bytes base64-encoded)
@@ -83,15 +83,15 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             self._logger.info(
                 "Password encryption service initialized",
                 encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256",
-                key_source="configured" if not encryption_key else "test"
+                key_source="configured" if not encryption_key else "provided"
             )
             
         except Exception as e:
-            # In test environments, fall back to generated key
+            # Fall back to generated key if configuration is invalid
             self._logger.warning(
                 "Invalid encryption key provided, falling back to generated key",
                 error=str(e),
-                environment="test_fallback"
+                environment="fallback"
             )
             self._fernet = Fernet(Fernet.generate_key())
     

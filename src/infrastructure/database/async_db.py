@@ -108,6 +108,28 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
             logger.debug("Async database session closed")
 
 
+async def get_async_db_dependency() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency function that yields an AsyncSession.
+    
+    This is the proper FastAPI dependency function that can be used with Depends().
+    It automatically manages the session lifecycle including rollback on errors.
+    
+    Yields:
+        AsyncSession: An asynchronous database session for use in FastAPI routes.
+    """
+    async with AsyncSessionFactory() as session:
+        logger.debug("Async database session created")
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            logger.error("Async database session rollback due to error")
+            raise
+        finally:
+            await session.close()
+            logger.debug("Async database session closed")
+
+
 async def create_async_db_and_tables() -> None:
     """Create tables using the async engine (mainly for test suites).
 
