@@ -173,7 +173,7 @@ async def test_unauthorized_access_without_token(client):
     """Tests that requests without an Authorization header receive a 401 response."""
     response = client.get("/api/v1/metrics")
     assert response.status_code == 401
-    assert "Not authenticated" in response.text
+    assert "Authorization header is missing" in response.text
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_invalid_token_format(client):
     headers = {"Authorization": "InvalidFormat token"}
     response = client.get("/api/v1/metrics", headers=headers)
     assert response.status_code == 401
-    assert "Not authenticated" in response.text
+    assert "Authorization header is missing" in response.text
 
 
 @pytest.mark.asyncio

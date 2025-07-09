@@ -9,7 +9,6 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Request, status
-from fastapi.security import OAuth2PasswordBearer
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
     get_user_logout_service,
@@ -17,7 +16,7 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
 )
 from src.adapters.api.v1.auth.schemas import MessageResponse
 from src.core.config.settings import settings
-from src.core.dependencies.auth import get_current_user
+from src.core.dependencies.auth import get_current_user, TokenCred
 from src.core.exceptions import AuthenticationError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
@@ -32,8 +31,6 @@ from src.utils.i18n import get_request_language, get_translated_message
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
 
 @router.delete(
     "",
@@ -45,7 +42,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 )
 async def logout_user(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    token: TokenCred,
     current_user: User = Depends(get_current_user),
     logout_service: IUserLogoutService = Depends(get_user_logout_service),
     error_classification_service: IErrorClassificationService = Depends(get_error_classification_service),
@@ -79,9 +76,14 @@ async def logout_user(
     )
     
     try:
+        # Token should never be None here since get_current_user dependency would have failed
+        if token is None:
+            raise AuthenticationError("Authorization header is missing")
+            
+        # Token is already validated by get_current_user dependency, use it directly
         # Validate and decode JWT access token
         access_token = AccessToken.from_encoded(
-            token=token,
+            token=token.credentials,
             public_key=settings.JWT_PUBLIC_KEY,
             issuer=settings.JWT_ISSUER,
             audience=settings.JWT_AUDIENCE,

@@ -132,6 +132,9 @@ msgstr "فشل تغيير كلمة المرور بسبب خطأ داخلي"
 msgid "password_change_service_unavailable"
 msgstr "خدمة تغيير كلمة المرور غير متاحة مؤقتاً"
 
+msgid "missing_authorization_header"
+msgstr "رأس التفويض مفقود"
+
 # Email functionality (2025-06-28)
 
 msgid "password_reset_email_subject"
@@ -148,6 +151,14 @@ msgstr "رمز إعادة تعيين كلمة المرور غير صالح أو 
 
 msgid "password_reset_success"
 msgstr "تم إعادة تعيين كلمة المرور بنجاح"
+
+# Authentication account lockout and expiration (2025-01-27)
+
+msgid "account_locked"
+msgstr "الحساب مقفل بسبب محاولات تسجيل دخول فاشلة كثيرة. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال بالدعم."
+
+msgid "expired_credentials"
+msgstr "انتهت صلاحية بيانات الاعتماد الخاصة بك. يرجى إعادة تعيين كلمة المرور للمتابعة."
 
 # Enhanced security logging and error standardization (2025-01-27)
 
@@ -252,3 +263,78 @@ msgstr "يرجى تأكيد بريدك الإلكتروني قبل تسجيل ا
 
 msgid "email_confirmed_success"
 msgstr "تم تأكيد البريد الإلكتروني بنجاح"
+
+msgid "username_security_violation"
+msgstr "اسم المستخدم يحتوي على محتوى خطير محتمل وتم حظره لأسباب أمنية"
+
+msgid "username_invalid_format"
+msgstr "تنسيق اسم المستخدم غير صالح"
+
+msgid "username_too_short"
+msgstr "يجب أن يكون اسم المستخدم 3 أحرف على الأقل"
+
+msgid "username_too_long"
+msgstr "يجب ألا يزيد اسم المستخدم عن 30 حرفًا"
+
+msgid "username_reserved_for_system"
+msgstr "اسم المستخدم محجوز للاستخدام من قبل النظام"
+
+msgid "username_validation_system_error"
+msgstr "نظام التحقق من اسم المستخدم غير متاح مؤقتًا"
+
+msgid "invalid_credentials_generic"
+msgstr "بيانات الاعتماد المقدمة غير صالحة"
+
+msgid "access_denied_generic"
+msgstr "تم رفض الوصول"
+
+msgid "invalid_input_generic"
+msgstr "المدخلات المقدمة غير صالحة"
+
+msgid "service_temporarily_unavailable"
+msgstr "الخدمة غير متاحة مؤقتًا"
+
+msgid "too_many_requests_generic"
+msgstr "طلبات كثيرة جداً. يرجى المحاولة لاحقًا"
+
+msgid "resource_not_accessible"
+msgstr "المورد المطلوب غير متاح"
+
+msgid "authentication_service_unavailable"
+msgstr "خدمة المصادقة غير متاحة مؤقتًا"
+
+msgid "oauth_authentication_system_error"
+msgstr "مصادقة OAuth غير متاحة مؤقتًا"
+
+msgid "invalid_oauth_token"
+msgstr "رمز OAuth غير صالح"
+
+msgid "invalid_oauth_credentials"
+msgstr "بيانات اعتماد OAuth غير صالحة"
+
+msgid "oauth_service_unavailable"
+msgstr "خدمة OAuth غير متاحة مؤقتًا"
+
+msgid "invalid_registration_data_format"
+msgstr "تنسيق بيانات التسجيل غير صالح"
+
+msgid "registration_service_unavailable"
+msgstr "خدمة التسجيل غير متاحة مؤقتًا"
+
+msgid "password_reset_request_failed"
+msgstr "فشل طلب إعادة تعيين كلمة المرور"
+
+msgid "password_reset_failed"
+msgstr "فشل إعادة تعيين كلمة المرور"
+
+msgid "password_too_weak"
+msgstr "كلمة المرور لا تلبي متطلبات الأمان"
+
+msgid "session_creation_timeout"
+msgstr "انتهت مهلة إنشاء الجلسة بسبب مشاكل في التناسق"
+
+msgid "session_creation_failed"
+msgstr "فشل إنشاء الجلسة بسبب خطأ داخلي"
+
+msgid "session_limit_exceeded"
+msgstr "تم تجاوز الحد الأقصى لعدد الجلسات المتزامنة"

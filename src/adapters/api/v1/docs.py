@@ -99,4 +99,5 @@ async def get_openapi_json():
     """
     from src.main import app  # Import app to access OpenAPI schema
 
+    # Return the OpenAPI schema as-is - FastAPI will automatically include
     return app.openapi()

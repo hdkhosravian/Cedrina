@@ -39,6 +39,10 @@ async def test_registration_email_confirmation_disabled(async_client, async_sess
 
 @pytest.mark.asyncio
 async def test_register_rate_limit_enforced(async_client, monkeypatch):
+    # First, override environment variable to enable rate limiting
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    
+    # Then set the settings attributes
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH", "2/second")
     monkeypatch.setattr(settings, "RATE_LIMIT_STORAGE_URL", "memory://")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)

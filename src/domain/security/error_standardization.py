@@ -127,38 +127,37 @@ class ErrorStandardizationService:
     
     # Standard error definitions
     STANDARD_ERRORS = {
-        # Authentication errors - all return the same generic message
+        # Authentication errors
         "invalid_credentials": StandardizedError(
             category=ErrorCategory.AUTHENTICATION,
-            message_key="invalid_credentials_generic",
-            http_status=401,
+            message_key="invalid_username_or_password",
+            http_status=400,
             timing_pattern=TimingPattern.SLOW
         ),
         "user_not_found": StandardizedError(
             category=ErrorCategory.AUTHENTICATION,
-            message_key="invalid_credentials_generic",
-            http_status=401,
+            message_key="user_not_found",
+            http_status=404,
             timing_pattern=TimingPattern.SLOW
         ),
         "inactive_account": StandardizedError(
             category=ErrorCategory.AUTHENTICATION,
-            message_key="invalid_credentials_generic",
+            message_key="user_account_inactive",
             http_status=401,
             timing_pattern=TimingPattern.SLOW
         ),
         "locked_account": StandardizedError(
             category=ErrorCategory.AUTHENTICATION,
-            message_key="invalid_credentials_generic",
+            message_key="account_locked",
             http_status=401,
             timing_pattern=TimingPattern.SLOW
         ),
         "expired_credentials": StandardizedError(
             category=ErrorCategory.AUTHENTICATION,
-            message_key="invalid_credentials_generic",
+            message_key="expired_credentials",
             http_status=401,
             timing_pattern=TimingPattern.SLOW
         ),
-        
         # Authorization errors
         "insufficient_permissions": StandardizedError(
             category=ErrorCategory.AUTHORIZATION,
@@ -172,7 +171,6 @@ class ErrorStandardizationService:
             http_status=403,
             timing_pattern=TimingPattern.MEDIUM
         ),
-        
         # Validation errors
         "invalid_input": StandardizedError(
             category=ErrorCategory.VALIDATION,
@@ -186,7 +184,6 @@ class ErrorStandardizationService:
             http_status=400,
             timing_pattern=TimingPattern.FAST
         ),
-        
         # System errors
         "internal_error": StandardizedError(
             category=ErrorCategory.SYSTEM,
@@ -200,7 +197,6 @@ class ErrorStandardizationService:
             http_status=503,
             timing_pattern=TimingPattern.MEDIUM
         ),
-        
         # Rate limiting
         "rate_limited": StandardizedError(
             category=ErrorCategory.RATE_LIMIT,
@@ -209,8 +205,7 @@ class ErrorStandardizationService:
             timing_pattern=TimingPattern.FAST,
             additional_headers={"Retry-After": "60"}
         ),
-        
-        # Resource not found - be careful not to leak existence information
+        # Resource not found
         "resource_not_found": StandardizedError(
             category=ErrorCategory.RESOURCE_NOT_FOUND,
             message_key="resource_not_accessible",

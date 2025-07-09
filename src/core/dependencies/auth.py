@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 # FastAPI & typing
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,9 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-TokenStr = Annotated[str, Depends(OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login"))]
+# Configure HTTPBearer with auto_error=False to handle missing tokens manually
+# This allows us to return 401 instead of 403 for missing Authorization headers
+TokenCred = Annotated[Optional[HTTPAuthorizationCredentials], Depends(HTTPBearer(auto_error=False))]
 DBSession = Annotated[AsyncSession, Depends(get_async_db_dependency)]
 RedisClient = Annotated[Redis, Depends(get_redis)]
 
@@ -54,7 +56,7 @@ def _auth_fail(request: Request, key: str) -> HTTPException:
 
 
 async def get_current_user(
-    request: Request, token: TokenStr, db_session: DBSession, redis_client: RedisClient
+    request: Request, token: TokenCred, db_session: DBSession, redis_client: RedisClient
 ) -> User:
     """Return the authenticated :class:`~src.domain.entities.user.User`.
 
@@ -65,7 +67,14 @@ async def get_current_user(
     try:
         # Get the language from request state, fallback to 'en' if not set
         language = getattr(request.state, "language", "en")
-        payload = await TokenService(db_session, redis_client).validate_token(token, language)
+        
+        # Check if Authorization header is missing
+        if token is None:
+            raise _auth_fail(request, "missing_authorization_header")
+        
+        # Extract the JWT token from HTTPAuthorizationCredentials
+        jwt_token = token.credentials
+        payload = await TokenService(db_session, redis_client).validate_token(jwt_token, language)
         user_id = payload.get("sub")
         if user_id is None:
             raise _auth_fail(request, "invalid_token_subject")

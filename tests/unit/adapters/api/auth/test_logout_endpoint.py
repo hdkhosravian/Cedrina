@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 from datetime import datetime, timezone, timedelta
 
 import pytest
+from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
 from src.adapters.api.v1.auth.routes.logout import logout_user
@@ -75,7 +76,8 @@ def valid_access_token():
         "iss": settings.JWT_ISSUER,
         "aud": settings.JWT_AUDIENCE,
     }
-    return jwt.encode(payload, settings.JWT_PRIVATE_KEY.get_secret_value(), algorithm="RS256")
+    token_string = jwt.encode(payload, settings.JWT_PRIVATE_KEY.get_secret_value(), algorithm="RS256")
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token_string)
 
 
 class TestLogoutEndpoint:

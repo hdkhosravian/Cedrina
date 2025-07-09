@@ -182,7 +182,7 @@ def test_logout_missing_authorization_header():
     )
 
     assert logout_response.status_code == 401
-    assert logout_response.json()["detail"] == "Not authenticated"
+    assert logout_response.json()["detail"] == "Authorization header is missing"
 
 
 def test_logout_invalid_access_token(test_client_with_mocks):
