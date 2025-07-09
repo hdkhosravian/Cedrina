@@ -24,7 +24,7 @@ from fastapi import Depends
 # Removed Redis import - no longer needed with unified architecture
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.interfaces.repositories import IUserRepository, IOAuthProfileRepository
+from src.domain.interfaces.repositories import IUserRepository, IOAuthProfileRepository, ITokenFamilyRepository
 from src.domain.interfaces import (
     IEventPublisher,
     IOAuthService,
@@ -70,6 +70,7 @@ from src.infrastructure.database.async_db import get_async_db_dependency
 # Removed Redis dependency - unified architecture uses database-only approach
 from src.infrastructure.repositories.user_repository import UserRepository
 from src.infrastructure.repositories.oauth_profile_repository import OAuthProfileRepository
+from src.infrastructure.repositories.token_family_repository import TokenFamilyRepository
 from src.infrastructure.services.event_publisher import InMemoryEventPublisher
 from src.infrastructure.services.password_reset_email_service import (
     PasswordResetEmailService,
@@ -100,6 +101,7 @@ from src.infrastructure.services.authentication import (
     PasswordEncryptionService,
 )
 from src.infrastructure.services.authentication.session import SessionService
+from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
 
 # ---------------------------------------------------------------------------
 # Type aliases for dependency injection
@@ -150,6 +152,25 @@ def get_oauth_profile_repository(db: AsyncDB) -> IOAuthProfileRepository:
         secure, efficient data access for OAuth profile management.
     """
     return OAuthProfileRepository(db)
+
+
+def get_token_family_repository(db: AsyncDB) -> ITokenFamilyRepository:
+    """Factory that returns token family repository implementation.
+    
+    This factory creates the token family repository with its database
+    dependency, following dependency injection principles.
+    
+    Args:
+        db: Database session dependency for data access
+        
+    Returns:
+        ITokenFamilyRepository: Token family repository implementation
+        
+    Note:
+        The token family repository provides encrypted storage and
+        security features for token family management.
+    """
+    return TokenFamilyRepository(db)
 
 
 def get_event_publisher() -> IEventPublisher:
@@ -515,6 +536,40 @@ def get_password_encryption_service() -> IPasswordEncryptionService:
         - Constant-time operations to prevent timing attacks
     """
     return PasswordEncryptionService()
+
+
+def get_session_service(
+    db: AsyncDB,
+    token_family_repository: ITokenFamilyRepository = Depends(get_token_family_repository),
+    event_publisher: IEventPublisher = Depends(get_event_publisher),
+) -> UnifiedSessionService:
+    """Factory that returns unified session service with token family integration.
+    
+    This factory creates the unified session service that uses database-only
+    storage with token family integration for enhanced security.
+    
+    Args:
+        db: Database session dependency for unified storage
+        token_family_repository: Token family repository for security integration
+        event_publisher: Event publisher for domain events
+        
+    Returns:
+        UnifiedSessionService: Unified session service with token family integration
+        
+    Note:
+        The unified session service provides:
+        - Database-only storage eliminates Redis complexity
+        - Token family integration for security correlation
+        - Comprehensive session lifecycle management
+        - Activity tracking and inactivity timeout
+        - Concurrent session limits with cleanup
+        - Audit trail generation for compliance
+    """
+    return UnifiedSessionService(
+        db_session=db,
+        token_family_repository=token_family_repository,
+        event_publisher=event_publisher
+    )
 
 
 def get_enhanced_token_validation_service(

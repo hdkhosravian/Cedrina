@@ -7,9 +7,13 @@ for data persistence operations while keeping the domain layer independent
 of infrastructure concerns.
 """
 
-# Import from the correct repositories.py file in parent directory
+# Repository interfaces following DDD principles
+from .user_repository import IUserRepository
+from .oauth_profile_repository import IOAuthProfileRepository
 from .token_family_repository import ITokenFamilyRepository
 
 __all__ = [
+    "IUserRepository",
+    "IOAuthProfileRepository", 
     "ITokenFamilyRepository",
 ] 

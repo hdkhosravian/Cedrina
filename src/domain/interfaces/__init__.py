@@ -20,8 +20,7 @@ Key DDD Principles Applied:
 """
 
 # Repository interfaces
-from .repositories import IUserRepository, IOAuthProfileRepository
-from .repositories.token_family_repository import ITokenFamilyRepository
+from .repositories import IUserRepository, IOAuthProfileRepository, ITokenFamilyRepository
 
 # Authentication interfaces
 from .authentication import (

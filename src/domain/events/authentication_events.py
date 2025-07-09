@@ -531,6 +531,105 @@ class SecurityIncidentEvent(BaseDomainEvent):
         )
 
 
+@dataclass(frozen=True)
+class SessionCreatedEvent(BaseDomainEvent):
+    """Event published when a new session is created."""
+    
+    jti: str
+    family_id: Optional[str] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        jti: str,
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'SessionCreatedEvent':
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            jti=jti,
+            family_id=family_id
+        )
+
+
+@dataclass(frozen=True)
+class SessionRevokedEvent(BaseDomainEvent):
+    """Event published when a session is revoked."""
+    
+    jti: str
+    family_id: Optional[str] = None
+    reason: str = "Manual revocation"
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        jti: str,
+        family_id: Optional[str] = None,
+        reason: str = "Manual revocation",
+        correlation_id: Optional[str] = None,
+    ) -> 'SessionRevokedEvent':
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            jti=jti,
+            family_id=family_id,
+            reason=reason
+        )
+
+
+@dataclass(frozen=True)
+class SessionExpiredEvent(BaseDomainEvent):
+    """Event published when a session expires."""
+    
+    jti: str
+    family_id: Optional[str] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        jti: str,
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'SessionExpiredEvent':
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            jti=jti,
+            family_id=family_id
+        )
+
+
+@dataclass(frozen=True)
+class SessionActivityUpdatedEvent(BaseDomainEvent):
+    """Event published when session activity is updated."""
+    
+    jti: str
+    family_id: Optional[str] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        jti: str,
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'SessionActivityUpdatedEvent':
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            jti=jti,
+            family_id=family_id
+        )
+
+
 class OAuthAuthenticationSuccessEvent(BaseDomainEvent):
     """Domain event for successful OAuth authentication.
     

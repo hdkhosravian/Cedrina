@@ -33,6 +33,7 @@ from src.infrastructure.services.event_publisher import InMemoryEventPublisher
 from src.infrastructure.services.password_reset_token_service import (
     PasswordResetTokenService,
 )
+from src.domain.interfaces.repositories import IUserRepository
 
 
 @pytest.fixture

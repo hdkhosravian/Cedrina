@@ -78,6 +78,16 @@ class Session(SQLModel, table=True):
         sa_column=Column(DateTime, nullable=True),  # Explicit DateTime type for Alembic
         description="Timestamp of when the session was revoked. Null if active.",
     )
+    revoke_reason: Optional[str] = Field(
+        max_length=255,
+        nullable=True,
+        description="Reason for session revocation.",
+    )
+    family_id: Optional[str] = Field(
+        max_length=255,
+        nullable=True,
+        description="Token family ID for security correlation.",
+    )
 
     __table_args__ = (
         Index("ix_sessions_jti", "jti"),  # Index for revocation checks
@@ -87,5 +97,8 @@ class Session(SQLModel, table=True):
         Index(
             "ix_sessions_last_activity_at", "last_activity_at"
         ),  # Index for inactivity-based cleanup
+        Index(
+            "ix_sessions_family_id", "family_id"
+        ),  # Index for token family correlation
         {"extend_existing": True},
     )
