@@ -19,6 +19,7 @@ from src.core.config.settings import settings  # Import settings after path adju
 from src.domain.entities.user import User  # User model
 from src.domain.entities.oauth_profile import OAuthProfile  # OAuthProfile model
 from src.domain.entities.session import Session  # Session model
+from src.domain.entities.token_family import TokenFamily  # TokenFamily model
 from sqlmodel import SQLModel  # For metadata
 
 # Alembic Config object, provides access to alembic.ini

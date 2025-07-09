@@ -406,6 +406,131 @@ class EmailConfirmedEvent(BaseDomainEvent):
         )
 
 
+@dataclass(frozen=True)
+class TokenFamilyCreatedEvent(BaseDomainEvent):
+    """Event published when a new token family is created.
+    
+    This event signals the establishment of a new token family for security
+    tracking and can trigger security monitoring and analytics.
+    """
+    
+    family_id: str
+    security_context: Optional[Dict[str, Any]] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        family_id: str,
+        security_context: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'TokenFamilyCreatedEvent':
+        """Create token family created event with current timestamp."""
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            family_id=family_id,
+            security_context=security_context,
+        )
+
+
+@dataclass(frozen=True)
+class TokenReuseDetectedEvent(BaseDomainEvent):
+    """Event published when token reuse is detected.
+    
+    This event signals a critical security violation that triggers
+    immediate family-wide revocation and security response.
+    """
+    
+    family_id: str
+    reused_jti: str
+    security_context: Optional[Dict[str, Any]] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        family_id: str,
+        reused_jti: str,
+        security_context: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'TokenReuseDetectedEvent':
+        """Create token reuse detected event with current timestamp."""
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            family_id=family_id,
+            reused_jti=reused_jti,
+            security_context=security_context,
+        )
+
+
+@dataclass(frozen=True)
+class TokenFamilyCompromisedEvent(BaseDomainEvent):
+    """Event published when a token family is compromised.
+    
+    This event signals that an entire token family has been compromised
+    and all tokens in the family have been revoked.
+    """
+    
+    family_id: str
+    compromise_reason: str
+    security_context: Optional[Dict[str, Any]] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        family_id: str,
+        compromise_reason: str,
+        security_context: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'TokenFamilyCompromisedEvent':
+        """Create token family compromised event with current timestamp."""
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            family_id=family_id,
+            compromise_reason=compromise_reason,
+            security_context=security_context,
+        )
+
+
+@dataclass(frozen=True)
+class SecurityIncidentEvent(BaseDomainEvent):
+    """Event published for general security incidents.
+    
+    This event captures various security incidents for monitoring,
+    analysis, and automated response systems.
+    """
+    
+    threat_level: str
+    indicators: list
+    security_context: Optional[Dict[str, Any]] = None
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        threat_level: str,
+        indicators: list,
+        security_context: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> 'SecurityIncidentEvent':
+        """Create security incident event with current timestamp."""
+        return cls(
+            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            correlation_id=correlation_id,
+            threat_level=threat_level,
+            indicators=indicators,
+            security_context=security_context,
+        )
+
+
 class OAuthAuthenticationSuccessEvent(BaseDomainEvent):
     """Domain event for successful OAuth authentication.
     

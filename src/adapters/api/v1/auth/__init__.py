@@ -9,6 +9,7 @@ from .routes import forgot_password as forgot_password_route
 from .routes import login as login_route
 from .routes import logout as logout_route
 from .routes import oauth as oauth_route
+from .routes import refresh_token as refresh_token_route
 from .routes import register as register_route
 from .routes import reset_password as reset_password_route
 from .routes import confirm_email as confirm_email_route
@@ -22,6 +23,7 @@ router.include_router(register_route.router, prefix="/register")
 router.include_router(login_route.router, prefix="/login")
 router.include_router(oauth_route.router, prefix="/oauth")
 router.include_router(logout_route.router, prefix="/logout")
+router.include_router(refresh_token_route.router, prefix="/refresh")
 router.include_router(change_password_route.router, prefix="/change-password")
 router.include_router(forgot_password_route.router, prefix="/forgot-password")
 router.include_router(reset_password_route.router, prefix="/reset-password")

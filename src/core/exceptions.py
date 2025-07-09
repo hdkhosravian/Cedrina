@@ -22,6 +22,7 @@ from src.utils.i18n import get_translated_message
 __all__: Final = [
     "CedrinaError",
     "AuthenticationError",
+    "SecurityViolationError",
     "DatabaseError",
     "UserAlreadyExistsError",
     "InvalidCredentialsError",
@@ -100,6 +101,18 @@ class InvalidCredentialsError(AuthenticationError):
     """
 
     def __init__(self, message: str, code: str = "invalid_credentials"):
+        super().__init__(message, code)
+
+
+class SecurityViolationError(AuthenticationError):
+    """Raised when a security violation is detected.
+
+    This exception indicates that a serious security threat has been detected,
+    such as token reuse, compromised families, or other security incidents.
+    It typically maps to a `401 Unauthorized` or `403 Forbidden` HTTP status.
+    """
+
+    def __init__(self, message: str, code: str = "security_violation"):
         super().__init__(message, code)
 
 

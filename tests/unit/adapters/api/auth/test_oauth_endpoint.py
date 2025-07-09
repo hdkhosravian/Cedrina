@@ -61,13 +61,30 @@ async def test_oauth_token_refresh_successful(async_client: httpx.AsyncClient, d
 
 @pytest.mark.asyncio
 async def test_oauth_token_refresh_invalid_token(async_client: httpx.AsyncClient, db_session):
-    """Test token refresh with invalid refresh token returns 404."""
+    """Test token refresh with invalid refresh token format returns 422."""
     response = await async_client.post(
         "/api/v1/auth/refresh", json={"refresh_token": "invalid.token.here"}
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "detail" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_oauth_token_refresh_malformed_request(async_client: httpx.AsyncClient, db_session):
+    """Test token refresh with malformed request (missing access token) returns 422."""
+    response = await async_client.post(
+        "/api/v1/auth/refresh", 
+        json={"refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ.signature"}
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "detail" in response.json()
+    
+    # Check that the error mentions missing access_token
+    errors = response.json()["detail"]
+    field_errors = [error for error in errors if "access_token" in str(error)]
+    assert len(field_errors) > 0
 
 
 # Temporarily comment out the test causing attribute error

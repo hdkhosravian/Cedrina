@@ -21,6 +21,7 @@ Key DDD Principles Applied:
 
 # Repository interfaces
 from .repositories import IUserRepository, IOAuthProfileRepository
+from .repositories.token_family_repository import ITokenFamilyRepository
 
 # Authentication interfaces
 from .authentication import (
@@ -51,6 +52,7 @@ __all__ = [
     # Repository interfaces
     "IUserRepository",
     "IOAuthProfileRepository",
+    "ITokenFamilyRepository",
     
     # Authentication interfaces
     "IUserAuthenticationService",

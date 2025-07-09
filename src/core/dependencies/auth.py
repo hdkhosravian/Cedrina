@@ -5,16 +5,16 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from redis.asyncio import Redis
+# Removed Redis import - unified architecture uses database-only approach
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AuthenticationError, PermissionError
 
 # Project imports
 from src.domain.entities.user import Role, User
-from src.infrastructure.services.authentication.token import TokenService
+from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 from src.infrastructure.database.async_db import get_async_db_dependency
-from src.infrastructure.redis import get_redis
+# Removed Redis dependency - unified architecture eliminates Redis usage
 from src.utils.i18n import get_translated_message
 
 __all__ = [
@@ -32,7 +32,7 @@ __all__ = [
 # This allows us to return 401 instead of 403 for missing Authorization headers
 TokenCred = Annotated[Optional[HTTPAuthorizationCredentials], Depends(HTTPBearer(auto_error=False))]
 DBSession = Annotated[AsyncSession, Depends(get_async_db_dependency)]
-RedisClient = Annotated[Redis, Depends(get_redis)]
+# Removed Redis client dependency - unified architecture uses database-only approach
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def _auth_fail(request: Request, key: str) -> HTTPException:
 
 
 async def get_current_user(
-    request: Request, token: TokenCred, db_session: DBSession, redis_client: RedisClient
+    request: Request, token: TokenCred, db_session: DBSession
 ) -> User:
     """Return the authenticated :class:`~src.domain.entities.user.User`.
 
@@ -74,7 +74,8 @@ async def get_current_user(
         
         # Extract the JWT token from HTTPAuthorizationCredentials
         jwt_token = token.credentials
-        payload = await TokenService(db_session, redis_client).validate_token(jwt_token, language)
+        token_service = DomainTokenService(db_session=db_session)
+        payload = await token_service.validate_token(jwt_token, language)
         user_id = payload.get("sub")
         if user_id is None:
             raise _auth_fail(request, "invalid_token_subject")
