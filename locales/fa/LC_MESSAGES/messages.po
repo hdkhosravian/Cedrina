@@ -132,6 +132,9 @@ msgstr "تغییر رمز عبور به دلیل خطای داخلی ناموف�
 msgid "password_change_service_unavailable"
 msgstr "سرویس تغییر رمز عبور موقتاً در دسترس نیست"
 
+msgid "missing_authorization_header"
+msgstr "هدر احراز هویت موجود نیست"
+
 # Email functionality (2025-06-28)
 
 msgid "password_reset_email_subject"
@@ -148,6 +151,14 @@ msgstr "توکن بازیابی رمز عبور نامعتبر یا منقضی �
 
 msgid "password_reset_success"
 msgstr "رمز عبور با موفقیت بازیابی شد"
+
+# Authentication account lockout and expiration (2025-01-27)
+
+msgid "account_locked"
+msgstr "حساب کاربری به دلیل تلاش‌های ناموفق زیاد برای ورود قفل شده است. لطفاً بعداً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
+
+msgid "expired_credentials"
+msgstr "اعتبارنامه‌های شما منقضی شده است. لطفاً رمز عبور خود را بازنشانی کنید تا ادامه دهید."
 
 # Enhanced security logging and error standardization (2025-01-27)
 
@@ -252,3 +263,78 @@ msgstr "لطفا قبل از ورود ایمیل خود را تایید کنید
 
 msgid "email_confirmed_success"
 msgstr "ایمیل با موفقیت تایید شد"
+
+msgid "username_security_violation"
+msgstr "نام کاربری حاوی محتوای بالقوه خطرناک است و به دلایل امنیتی مسدود شده است"
+
+msgid "username_invalid_format"
+msgstr "فرمت نام کاربری نامعتبر است"
+
+msgid "username_too_short"
+msgstr "نام کاربری باید حداقل ۳ کاراکتر باشد"
+
+msgid "username_too_long"
+msgstr "نام کاربری باید حداکثر ۳۰ کاراکتر باشد"
+
+msgid "username_reserved_for_system"
+msgstr "نام کاربری برای استفاده سیستم رزرو شده است"
+
+msgid "username_validation_system_error"
+msgstr "سیستم اعتبارسنجی نام کاربری موقتاً در دسترس نیست"
+
+msgid "invalid_credentials_generic"
+msgstr "اعتبارنامه ارائه شده نامعتبر است"
+
+msgid "access_denied_generic"
+msgstr "دسترسی رد شد"
+
+msgid "invalid_input_generic"
+msgstr "ورودی ارائه شده نامعتبر است"
+
+msgid "service_temporarily_unavailable"
+msgstr "سرویس موقتاً در دسترس نیست"
+
+msgid "too_many_requests_generic"
+msgstr "درخواست‌های بیش از حد. لطفاً بعداً دوباره تلاش کنید"
+
+msgid "resource_not_accessible"
+msgstr "منبع درخواستی قابل دسترسی نیست"
+
+msgid "authentication_service_unavailable"
+msgstr "سرویس احراز هویت موقتاً در دسترس نیست"
+
+msgid "oauth_authentication_system_error"
+msgstr "احراز هویت OAuth موقتاً در دسترس نیست"
+
+msgid "invalid_oauth_token"
+msgstr "توکن OAuth نامعتبر است"
+
+msgid "invalid_oauth_credentials"
+msgstr "اعتبارنامه OAuth نامعتبر است"
+
+msgid "oauth_service_unavailable"
+msgstr "سرویس OAuth موقتاً در دسترس نیست"
+
+msgid "invalid_registration_data_format"
+msgstr "فرمت داده‌های ثبت‌نام نامعتبر است"
+
+msgid "registration_service_unavailable"
+msgstr "سرویس ثبت‌نام موقتاً در دسترس نیست"
+
+msgid "password_reset_request_failed"
+msgstr "درخواست بازیابی رمز عبور ناموفق بود"
+
+msgid "password_reset_failed"
+msgstr "بازیابی رمز عبور ناموفق بود"
+
+msgid "password_too_weak"
+msgstr "رمز عبور الزامات امنیتی را برآورده نمی‌کند"
+
+msgid "session_creation_timeout"
+msgstr "ایجاد نشست به دلیل مشکلات سازگاری از زمان مجاز خارج شد"
+
+msgid "session_creation_failed"
+msgstr "ایجاد نشست به دلیل خطای داخلی ناموفق بود"
+
+msgid "session_limit_exceeded"
+msgstr "حداکثر تعداد نشست‌های همزمان تجاوز شده است"

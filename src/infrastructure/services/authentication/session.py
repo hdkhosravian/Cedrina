@@ -79,8 +79,8 @@ class SessionService:
             user_id=user_id,
             jti=jti,
             refresh_token_hash=refresh_token_hash,
-            expires_at=expires_at,
-            last_activity_at=current_time,
+            expires_at=expires_at.replace(tzinfo=None),  # Store as naive datetime
+            last_activity_at=current_time.replace(tzinfo=None),  # Store as naive datetime
         )
 
         # Store in both Redis and PostgreSQL with consistency check
@@ -97,7 +97,8 @@ class SessionService:
                 timeout=settings.SESSION_CONSISTENCY_TIMEOUT_SECONDS,
             )
             
-            await logger.ainfo(
+            # Use sync logging instead of async to avoid MissingGreenlet errors
+            logger.info(
                 "Session created successfully",
                 user_id=user_id,
                 jti=jti,
@@ -114,7 +115,8 @@ class SessionService:
         except Exception as e:
             # Cleanup on any error
             await self._cleanup_failed_session_creation(jti, user_id)
-            await logger.aerror(
+            # Use sync logging instead of async to avoid MissingGreenlet errors
+            logger.error(
                 "Session creation failed",
                 user_id=user_id,
                 jti=jti,
@@ -144,18 +146,22 @@ class SessionService:
 
         # Check if session is revoked
         if session.revoked_at:
-            await logger.adebug("Session revoked", jti=jti, user_id=user_id)
+            logger.debug("Session revoked", jti=jti, user_id=user_id)
             return False
 
+        current_time = datetime.now(timezone.utc)
+        # Database timestamps are naive, so we need to compare with naive datetime
+        current_time_naive = current_time.replace(tzinfo=None)
+
         # Check if session is expired
-        if session.expires_at < datetime.now(timezone.utc):
-            await logger.adebug("Session expired", jti=jti, user_id=user_id)
+        if session.expires_at < current_time_naive:
+            logger.debug("Session expired", jti=jti, user_id=user_id)
             return False
 
         # Check inactivity timeout
         inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
-        if session.last_activity_at + inactivity_timeout < datetime.now(timezone.utc):
-            await logger.ainfo(
+        if session.last_activity_at + inactivity_timeout < current_time_naive:
+            logger.info(
                 "Session expired due to inactivity",
                 jti=jti,
                 user_id=user_id,
@@ -164,8 +170,8 @@ class SessionService:
             await self.revoke_session(jti, user_id, "en")
             return False
 
-        # Update activity timestamp
-        session.last_activity_at = datetime.now(timezone.utc)
+        # Update activity timestamp (store as naive datetime)
+        session.last_activity_at = current_time_naive
         self.db_session.add(session)
         await self.db_session.commit()
 
@@ -198,13 +204,13 @@ class SessionService:
         """
         session = await self.get_session(jti, user_id)
         if not session or session.revoked_at:
-            await logger.awarning("Attempt to revoke invalid session", jti=jti)
+            logger.warning("Attempt to revoke invalid session", jti=jti)
             raise AuthenticationError(
                 get_translated_message("session_revoked_or_invalid", language)
             )
 
         # Mark session as revoked
-        session.revoked_at = datetime.now(timezone.utc)
+        session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)  # Store as naive datetime
         self.db_session.add(session)
 
         # Immediate access token blacklisting
@@ -217,7 +223,7 @@ class SessionService:
         )
 
         await self.db_session.commit()
-        await logger.ainfo("Session revoked", user_id=user_id, jti=jti)
+        logger.info("Session revoked", user_id=user_id, jti=jti)
 
     async def get_session(self, jti: str, user_id: int) -> Optional[Session]:
         """Retrieve a session by JWT ID and user ID.
@@ -230,10 +236,10 @@ class SessionService:
             Optional[Session]: Session entity or None if not found.
 
         """
-        session = await self.db_session.exec(
+        result = await self.db_session.execute(
             select(Session).where(Session.jti == jti, Session.user_id == user_id)
         )
-        return session.first()
+        return result.scalars().first()
 
     async def is_session_valid(self, jti: str, user_id: int) -> bool:
         """Check if a session is valid with comprehensive validation.
@@ -255,21 +261,25 @@ class SessionService:
         """
         session = await self.get_session(jti, user_id)
         if not session:
-            await logger.adebug("Session not found", jti=jti, user_id=user_id)
+            logger.debug("Session not found", jti=jti, user_id=user_id)
             return False
 
         if session.revoked_at:
-            await logger.adebug("Session revoked", jti=jti, user_id=user_id)
+            logger.debug("Session revoked", jti=jti, user_id=user_id)
             return False
 
-        if session.expires_at < datetime.now(timezone.utc):
-            await logger.adebug("Session expired", jti=jti, user_id=user_id)
+        current_time = datetime.now(timezone.utc)
+        # Database timestamps are naive, so we need to compare with naive datetime
+        current_time_naive = current_time.replace(tzinfo=None)
+        
+        if session.expires_at < current_time_naive:
+            logger.debug("Session expired", jti=jti, user_id=user_id)
             return False
 
         # Check inactivity timeout
         inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
-        if session.last_activity_at + inactivity_timeout < datetime.now(timezone.utc):
-            await logger.ainfo(
+        if session.last_activity_at + inactivity_timeout < current_time_naive:
+            logger.info(
                 "Session expired due to inactivity",
                 jti=jti,
                 user_id=user_id,
@@ -284,10 +294,10 @@ class SessionService:
                 timeout=settings.SESSION_CONSISTENCY_TIMEOUT_SECONDS,
             )
             if not redis_hash:
-                await logger.awarning("Session inconsistency detected", jti=jti, user_id=user_id)
+                logger.warning("Session inconsistency detected", jti=jti, user_id=user_id)
                 return False
         except asyncio.TimeoutError:
-            await logger.awarning("Redis consistency check timeout", jti=jti, user_id=user_id)
+            logger.warning("Redis consistency check timeout", jti=jti, user_id=user_id)
             return False
 
         return True
@@ -321,17 +331,24 @@ class SessionService:
             List[Session]: List of active sessions.
 
         """
-        sessions = await self.db_session.exec(
+        current_time = datetime.now(timezone.utc)
+        inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        
+        # Convert timezone-aware datetime to naive datetime for database query
+        # Database columns are TIMESTAMP WITHOUT TIME ZONE
+        current_time_naive = current_time.replace(tzinfo=None)
+        
+        result = await self.db_session.execute(
             select(Session).where(
                 and_(
                     Session.user_id == user_id,
                     Session.revoked_at.is_(None),
-                    Session.expires_at > datetime.now(timezone.utc),
-                    Session.last_activity_at + timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES) > datetime.now(timezone.utc),
+                    Session.expires_at > current_time_naive,
+                    Session.last_activity_at + inactivity_timeout > current_time_naive,
                 )
             )
         )
-        return sessions.all()
+        return list(result.scalars().all())
 
     async def cleanup_expired_sessions(self) -> int:
         """Clean up expired and inactive sessions.
@@ -345,19 +362,25 @@ class SessionService:
             int: Number of sessions cleaned up.
 
         """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        current_time = datetime.now(timezone.utc)
+        cutoff_time = current_time - timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
+        
+        # Convert timezone-aware datetime to naive datetime for database query
+        # Database columns are TIMESTAMP WITHOUT TIME ZONE
+        current_time_naive = current_time.replace(tzinfo=None)
+        cutoff_time_naive = cutoff_time.replace(tzinfo=None)
         
         # Find sessions to cleanup
-        sessions_to_cleanup = await self.db_session.exec(
+        result = await self.db_session.execute(
             select(Session).where(
                 or_(
-                    Session.expires_at < datetime.now(timezone.utc),
-                    Session.last_activity_at < cutoff_time,
+                    Session.expires_at < current_time_naive,
+                    Session.last_activity_at < cutoff_time_naive,
                     Session.revoked_at.is_not(None),
                 )
             )
         )
-        sessions = sessions_to_cleanup.all()
+        sessions = list(result.scalars().all())
         
         if not sessions:
             return 0
@@ -379,10 +402,10 @@ class SessionService:
         
         await self.db_session.commit()
         
-        await logger.ainfo(
+        logger.info(
             "Expired sessions cleaned up",
             count=len(sessions),
-            user_ids=[s.user_id for s in sessions],
+            user_id=sessions[0].user_id,
         )
         
         return len(sessions)
@@ -403,7 +426,7 @@ class SessionService:
             # Revoke oldest session to make room
             oldest_session = min(active_sessions, key=lambda s: s.last_activity_at)
             await self.revoke_session(oldest_session.jti, user_id, "en")
-            await logger.ainfo(
+            logger.info(
                 "Oldest session revoked to enforce limits",
                 user_id=user_id,
                 revoked_jti=oldest_session.jti,

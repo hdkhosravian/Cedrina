@@ -448,6 +448,24 @@ class UserRepository(IUserRepository):
         except Exception as e:
             # Rollback transaction on error
             await self.db_session.rollback()
+            
+            # Convert database-specific errors to domain exceptions
+            if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+                logger.warning(
+                    "Duplicate user detected during save",
+                    user_id=user.id if user else None,
+                    username=(
+                        user.username[:3] + "***"
+                        if user and user.username and len(user.username) > 3
+                        else (user.username if user else None)
+                    ),
+                    error=str(e),
+                    error_type="duplicate_user_error",
+                    operation="save_failed",
+                )
+                from src.core.exceptions import DuplicateUserError
+                raise DuplicateUserError("User with this username or email already exists")
+            
             logger.error(
                 "Error saving user",
                 user_id=user.id if user else None,

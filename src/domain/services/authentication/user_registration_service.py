@@ -139,7 +139,7 @@ class UserRegistrationService(IUserRegistrationService):
             user = User(
                 username=str(username),
                 email=str(email),
-                hashed_password=str(hashed_password),
+                hashed_password=hashed_password.value,
                 role=role,
                 is_active=not settings.EMAIL_CONFIRMATION_ENABLED,
                 email_confirmed=not settings.EMAIL_CONFIRMATION_ENABLED,
@@ -177,14 +177,29 @@ class UserRegistrationService(IUserRegistrationService):
             # Re-raise domain exceptions as-is
             raise
         except ValueError as e:
-            # Input validation failed
-            logger.warning(
-                "Registration failed - validation error",
-                username=str(username)[:3] + "***" if username else "None",
-                email=str(email)[:3] + "***" if email else "None",
-                error=str(e),
-                correlation_id=correlation_id,
-            )
+            # Input validation failed - check if it's a password validation error
+            error_message = str(e)
+            if any(keyword in error_message.lower() for keyword in [
+                "password", "character", "uppercase", "lowercase", "digit", "special"
+            ]):
+                # Convert password validation errors to PasswordPolicyError
+                logger.warning(
+                    "Registration failed - password policy violation",
+                    username=str(username)[:3] + "***" if username else "None",
+                    email=str(email)[:3] + "***" if email else "None",
+                    error=error_message,
+                    correlation_id=correlation_id,
+                )
+                raise PasswordPolicyError(error_message)
+            else:
+                # Other validation errors
+                logger.warning(
+                    "Registration failed - validation error",
+                    username=str(username)[:3] + "***" if username else "None",
+                    email=str(email)[:3] + "***" if email else "None",
+                    error=error_message,
+                    correlation_id=correlation_id,
+                )
             raise
         except Exception as e:
             logger.error(

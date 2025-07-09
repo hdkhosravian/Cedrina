@@ -28,7 +28,7 @@ from src.domain.interfaces import (
     IEventPublisher,
     IUserAuthenticationService,
 )
-from src.domain.value_objects.password import HashedPassword, Password
+from src.domain.value_objects.password import HashedPassword, LoginPassword, Password
 from src.domain.value_objects.username import Username
 from src.utils.i18n import get_translated_message
 from src.core.config.settings import settings
@@ -85,7 +85,7 @@ class UserAuthenticationService(IUserAuthenticationService):
     async def authenticate_user(
         self,
         username: Username,
-        password: Password,
+        password: LoginPassword,
         language: str = "en",
         client_ip: str = "",
         user_agent: str = "",

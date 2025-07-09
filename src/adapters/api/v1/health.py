@@ -74,10 +74,8 @@ async def health_check(request: Request):
         check_redis_health(), check_database_health_async()
     )
 
-    # Determine overall health, considering test environment
-    services_healthy = db_health["status"] == "healthy"
-    if settings.APP_ENV != "test":
-        services_healthy = services_healthy and redis_health["status"] == "healthy"
+    # Determine overall health
+    services_healthy = db_health["status"] == "healthy" and redis_health["status"] == "healthy"
 
     overall_status = "ok" if services_healthy else "degraded"
 

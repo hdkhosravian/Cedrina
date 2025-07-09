@@ -12,6 +12,76 @@ from src.utils.security import hash_password, verify_password
 
 
 @dataclass(frozen=True)
+class LoginPassword:
+    """Password value object for login attempts with minimal validation.
+    
+    This value object is specifically designed for login attempts and only
+    performs basic format validation without applying password policy rules.
+    This prevents false positives during authentication.
+    
+    Security Requirements:
+        - Not empty
+        - Reasonable length (1-128 characters)
+        
+    Attributes:
+        value: The raw password string (immutable)
+    """
+    
+    value: str
+    
+    # Basic constraints for login
+    MIN_LENGTH: ClassVar[int] = 1
+    MAX_LENGTH: ClassVar[int] = 128
+    
+    def __post_init__(self) -> None:
+        """Validate password on construction."""
+        self._validate()
+    
+    def _validate(self) -> None:
+        """Validate password with minimal requirements for login.
+        
+        Raises:
+            ValueError: If password doesn't meet basic requirements
+        """
+        if not self.value:
+            raise ValueError("Password cannot be empty")
+        
+        if len(self.value) < self.MIN_LENGTH:
+            raise ValueError(f"Password must be at least {self.MIN_LENGTH} character long")
+        
+        if len(self.value) > self.MAX_LENGTH:
+            raise ValueError(f"Password must not exceed {self.MAX_LENGTH} characters")
+    
+    def verify_against_hash(self, hashed_password: str) -> bool:
+        """Verify this password against a bcrypt hash using constant-time comparison.
+        
+        This method provides secure password verification by delegating to the
+        security utility function that uses bcrypt's built-in constant-time
+        comparison to prevent timing attacks.
+        
+        Args:
+            hashed_password: The bcrypt hash to verify against
+            
+        Returns:
+            bool: True if password matches the hash, False otherwise
+            
+        Security Features:
+            - Constant-time comparison via bcrypt
+            - Resistant to timing attacks
+            - Uses same bcrypt configuration as password hashing
+            - Handles bcrypt hash format validation internally
+            - Returns False for any invalid hash format (no information disclosure)
+        """
+        try:
+            return verify_password(self.value, hashed_password)
+        except Exception:
+            # Return False for any invalid hash format or verification error
+            # This prevents information disclosure through error messages
+            # and ensures consistent behavior regardless of hash validity
+            return False
+
+
+@dataclass(frozen=True)
 class Password:
     """Password value object that enforces security requirements.
     

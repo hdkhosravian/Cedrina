@@ -102,27 +102,22 @@ class ResetToken:
     @classmethod
     def generate(cls, expiry_minutes: int = None) -> 'ResetToken':
         """Generate a new cryptographically secure reset token with advanced unpredictability.
-        
         This method creates tokens with maximum security by:
         - Using SystemRandom for cryptographically secure generation
-        - Variable length for unpredictability (48-64 characters)
+        - Fixed length for predictability (64 characters)
         - Mixed character sets with extended special characters
         - Character position randomization
         - High entropy generation (>128 bits)
         - Multiple rounds of shuffling
-        
         Args:
             expiry_minutes: Token expiry time in minutes (default: 5)
-            
         Returns:
             ResetToken: New secure token with expiration
         """
         # Use SystemRandom for maximum security
         secure_random = secrets.SystemRandom()
-        
-        # Generate variable length for unpredictability
-        token_length = secure_random.randint(cls.MIN_TOKEN_LENGTH, cls.MAX_TOKEN_LENGTH)
-        
+        # Always use 64 characters for API compatibility
+        token_length = cls.MAX_TOKEN_LENGTH
         # Create comprehensive character set for maximum unpredictability
         all_chars = (
             cls.UPPERCASE_CHARS + 
@@ -131,7 +126,6 @@ class ResetToken:
             cls.SPECIAL_CHARS + 
             cls.EXTENDED_SPECIAL_CHARS
         )
-        
         # Ensure at least one character from each required set
         token_parts = [
             secure_random.choice(cls.UPPERCASE_CHARS),
@@ -139,22 +133,17 @@ class ResetToken:
             secure_random.choice(cls.DIGIT_CHARS),
             secure_random.choice(cls.SPECIAL_CHARS)
         ]
-        
         # Fill remaining length with random characters from all sets
         remaining_length = token_length - len(token_parts)
         token_parts.extend(secure_random.choice(all_chars) for _ in range(remaining_length))
-        
         # Multiple rounds of shuffling for maximum unpredictability
         for _ in range(3):  # Triple shuffle for enhanced security
             secure_random.shuffle(token_parts)
-        
         # Final token assembly
         token_value = ''.join(token_parts)
-        
         # Set expiration time
         expiry_mins = expiry_minutes or cls.DEFAULT_EXPIRY_MINUTES
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_mins)
-        
         return cls(value=token_value, expires_at=expires_at)
     
     @classmethod

@@ -29,7 +29,7 @@ from src.domain.interfaces import (
 )
 from src.domain.security.error_standardization import error_standardization_service
 from src.domain.security.logging_service import secure_logging_service
-from src.domain.value_objects.password import HashedPassword, Password
+from src.domain.value_objects.password import HashedPassword, LoginPassword, Password
 from src.domain.value_objects.username import Username
 from src.utils.i18n import get_translated_message
 
@@ -65,7 +65,7 @@ class UserAuthenticationSecurityService(IUserAuthenticationService):
     async def authenticate_user(
         self,
         username: Username,
-        password: Password,
+        password: LoginPassword,
         language: str = "en",
         client_ip: str = "",
         user_agent: str = "",

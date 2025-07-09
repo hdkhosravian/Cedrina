@@ -183,7 +183,9 @@ msgstr "El cambio de contraseña falló debido a un error interno"
 msgid "password_change_service_unavailable"
 msgstr "El servicio de cambio de contraseña no está disponible temporalmente"
 
-# Email functionality (2025-06-28)
+msgid "missing_authorization_header"
+msgstr "Falta el encabezado de autorización"
+
 
 msgid "password_reset_email_subject"
 msgstr "Solicitud de Restablecimiento de Contraseña - Cedrina"
@@ -199,6 +201,14 @@ msgstr "El token de restablecimiento de contraseña es inválido o ha expirado"
 
 msgid "password_reset_success"
 msgstr "La contraseña ha sido restablecida exitosamente"
+
+# Authentication account lockout and expiration (2025-01-27)
+
+msgid "account_locked"
+msgstr "La cuenta está bloqueada debido a demasiados intentos fallidos de inicio de sesión. Inténtalo de nuevo más tarde o contacta con soporte."
+
+msgid "expired_credentials"
+msgstr "Tus credenciales han expirado. Por favor, restablece tu contraseña para continuar."
 
 # Enhanced security logging and error standardization (2025-01-27)
 
@@ -302,4 +312,79 @@ msgstr "Por favor confirma tu correo electrónico antes de iniciar sesión"
 
 msgid "email_confirmed_success"
 msgstr "Correo electrónico confirmado exitosamente"
+
+msgid "username_security_violation"
+msgstr "El nombre de usuario contiene contenido potencialmente peligroso y ha sido bloqueado por razones de seguridad"
+
+msgid "username_invalid_format"
+msgstr "El formato del nombre de usuario no es válido"
+
+msgid "username_too_short"
+msgstr "El nombre de usuario debe tener al menos 3 caracteres"
+
+msgid "username_too_long"
+msgstr "El nombre de usuario debe tener como máximo 30 caracteres"
+
+msgid "username_reserved_for_system"
+msgstr "El nombre de usuario está reservado para uso del sistema"
+
+msgid "username_validation_system_error"
+msgstr "El sistema de validación de nombre de usuario no está disponible temporalmente"
+
+msgid "invalid_credentials_generic"
+msgstr "Credenciales proporcionadas no válidas"
+
+msgid "access_denied_generic"
+msgstr "Acceso denegado"
+
+msgid "invalid_input_generic"
+msgstr "La entrada proporcionada no es válida"
+
+msgid "service_temporarily_unavailable"
+msgstr "El servicio no está disponible temporalmente"
+
+msgid "too_many_requests_generic"
+msgstr "Demasiadas solicitudes. Por favor, inténtalo de nuevo más tarde"
+
+msgid "resource_not_accessible"
+msgstr "El recurso solicitado no es accesible"
+
+msgid "authentication_service_unavailable"
+msgstr "El servicio de autenticación no está disponible temporalmente"
+
+msgid "oauth_authentication_system_error"
+msgstr "La autenticación OAuth no está disponible temporalmente"
+
+msgid "invalid_oauth_token"
+msgstr "Token OAuth no válido"
+
+msgid "invalid_oauth_credentials"
+msgstr "Credenciales OAuth no válidas"
+
+msgid "oauth_service_unavailable"
+msgstr "El servicio OAuth no está disponible temporalmente"
+
+msgid "invalid_registration_data_format"
+msgstr "El formato de los datos de registro no es válido"
+
+msgid "registration_service_unavailable"
+msgstr "El servicio de registro no está disponible temporalmente"
+
+msgid "password_reset_request_failed"
+msgstr "La solicitud de restablecimiento de contraseña falló"
+
+msgid "password_reset_failed"
+msgstr "El restablecimiento de contraseña falló"
+
+msgid "password_too_weak"
+msgstr "La contraseña no cumple con los requisitos de seguridad"
+
+msgid "session_creation_timeout"
+msgstr "La creación de la sesión excedió el tiempo de espera debido a problemas de consistencia"
+
+msgid "session_creation_failed"
+msgstr "La creación de la sesión falló debido a un error interno"
+
+msgid "session_limit_exceeded"
+msgstr "Se ha superado el número máximo de sesiones concurrentes"
 

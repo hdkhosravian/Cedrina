@@ -31,6 +31,7 @@ from .authentication import (
     IPasswordResetTokenService,
     IPasswordResetEmailService,
     IOAuthService,
+    IErrorClassificationService,
 )
 from .authentication.email_confirmation import (
     IEmailConfirmationTokenService,
@@ -59,6 +60,7 @@ __all__ = [
     "IPasswordResetTokenService",
     "IPasswordResetEmailService",
     "IOAuthService",
+    "IErrorClassificationService",
     "IEmailConfirmationTokenService",
     "IEmailConfirmationEmailService",
     

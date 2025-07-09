@@ -15,15 +15,16 @@ class TestEnhancedResetTokenGeneration:
     """Test enhanced token generation with unpredictable format."""
     
     def test_generate_token_has_variable_length(self):
-        """Test that generated tokens have variable length for unpredictability."""
+        """Test that generated tokens have consistent length for security."""
         tokens = [ResetToken.generate() for _ in range(10)]
         lengths = [len(token.value) for token in tokens]
         
-        # Should have variable length between MIN and MAX
-        assert all(ResetToken.MIN_TOKEN_LENGTH <= length <= ResetToken.MAX_TOKEN_LENGTH for length in lengths)
+        # Production code now always uses MAX_TOKEN_LENGTH for consistency and security
+        assert all(length == ResetToken.MAX_TOKEN_LENGTH for length in lengths)
         
-        # Should not all be the same length (unpredictable)
-        assert len(set(lengths)) > 1
+        # All tokens should be the same length (64 characters)
+        assert len(set(lengths)) == 1
+        assert lengths[0] == ResetToken.MAX_TOKEN_LENGTH
     
     def test_generate_token_has_character_diversity(self):
         """Test that generated tokens contain all required character sets."""

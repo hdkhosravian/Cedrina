@@ -10,6 +10,7 @@ import structlog
 
 from src.domain.entities.user import User
 from src.domain.interfaces import ITokenService
+from src.domain.value_objects.jwt_token import TokenId
 from src.infrastructure.services.authentication.token import TokenService as LegacyTokenService
 
 logger = structlog.get_logger(__name__)
@@ -38,18 +39,19 @@ class TokenServiceAdapter(ITokenService):
         self._legacy_service = legacy_token_service
         logger.info("TokenServiceAdapter initialized")
     
-    async def create_access_token(self, user: User) -> str:
+    async def create_access_token(self, user: User, jti: Optional[str] = None) -> str:
         """Create JWT access token for user.
         
         Args:
             user: User to create token for
+            jti: Optional JWT ID to use
             
         Returns:
             str: Encoded access token
         """
         try:
             # Delegate to legacy service
-            token = await self._legacy_service.create_access_token(user)
+            token = await self._legacy_service.create_access_token(user, jti)
             
             logger.debug(
                 "Access token created via adapter",
@@ -67,18 +69,19 @@ class TokenServiceAdapter(ITokenService):
             )
             raise
     
-    async def create_refresh_token(self, user: User) -> str:
+    async def create_refresh_token(self, user: User, jti: Optional[str] = None) -> str:
         """Create JWT refresh token for user.
         
         Args:
             user: User to create token for
+            jti: Optional JWT ID to use
             
         Returns:
             str: Encoded refresh token
         """
         try:
             # Delegate to legacy service
-            token = await self._legacy_service.create_refresh_token(user)
+            token = await self._legacy_service.create_refresh_token(user, jti)
             
             logger.debug(
                 "Refresh token created via adapter",
@@ -256,9 +259,12 @@ class TokenServiceAdapter(ITokenService):
             dict: Both access and refresh tokens with metadata
         """
         try:
-            # Create both tokens
-            access_token = await self.create_access_token(user)
-            refresh_token = await self.create_refresh_token(user)
+            # Generate a single JTI for both tokens to ensure they're linked
+            shared_jti = TokenId.generate().value
+            
+            # Create both tokens with the same JTI
+            access_token = await self.create_access_token(user, jti=shared_jti)
+            refresh_token = await self.create_refresh_token(user, jti=shared_jti)
             
             # Return in format expected by API endpoints
             return {
