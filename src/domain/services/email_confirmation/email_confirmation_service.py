@@ -3,7 +3,7 @@
 from typing import Optional
 import structlog
 
-from src.core.exceptions import UserNotFoundError
+from src.common.exceptions import UserNotFoundError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
     IEmailConfirmationTokenService,
@@ -11,7 +11,7 @@ from src.domain.interfaces import (
     IEventPublisher,
 )
 from src.domain.events.authentication_events import EmailConfirmedEvent
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -56,7 +56,7 @@ class EmailConfirmationService:
             if self._event_publisher:
                 event = EmailConfirmedEvent.create(
                     user_id=user.id,
-                    username=user.username,
+                    email=user.email,
                 )
                 await self._event_publisher.publish(event)
             return user

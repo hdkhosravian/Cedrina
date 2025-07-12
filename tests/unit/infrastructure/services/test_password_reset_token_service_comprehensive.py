@@ -8,9 +8,9 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.core.exceptions import RateLimitExceededError
+from src.common.exceptions import RateLimitExceededError
 from src.domain.entities.user import User
-from src.domain.interfaces import IRateLimitingService
+from src.common.security import IRateLimitingService
 from src.domain.value_objects.reset_token import ResetToken
 from src.infrastructure.services.password_reset_token_service import PasswordResetTokenService
 

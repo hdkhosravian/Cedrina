@@ -4,14 +4,14 @@ from typing import Optional
 
 import structlog
 
-from src.core.exceptions import EmailServiceError
+from src.common.exceptions import EmailServiceError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
     IUserRepository,
 )
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 

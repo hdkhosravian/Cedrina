@@ -6,7 +6,7 @@ logic for user logout operations.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only logout logic
-- Domain Value Objects: Uses AccessToken and RefreshToken value objects
+- Domain Value Objects: Uses AccessToken and SecurityContext value objects
 - Domain Events: Publishes UserLoggedOut event
 - Ubiquitous Language: Method names reflect business concepts
 """
@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 
 from src.domain.entities.user import User
 from src.domain.value_objects.jwt_token import AccessToken
+from src.domain.value_objects.security_context import SecurityContext
 
 
 class IUserLogoutService(ABC):
@@ -28,9 +29,10 @@ class IUserLogoutService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only logout logic
-    - Domain Value Objects: Uses AccessToken and RefreshToken value objects
+    - Domain Value Objects: Uses AccessToken and SecurityContext value objects
     - Domain Events: Publishes UserLoggedOut event
     - Ubiquitous Language: Method names reflect business concepts
+    - Fail-Safe Security: Implements secure token revocation and audit trails
     """
 
     @abstractmethod
@@ -38,19 +40,26 @@ class IUserLogoutService(ABC):
         self,
         access_token: AccessToken,
         user: User,
-        language: str = "en",
-        client_ip: str = "",
-        user_agent: str = "",
-        correlation_id: str = "",
+        security_context: SecurityContext,
+        language: str = "en"
     ) -> None:
         """Logs a user out by revoking their tokens and session.
+
+        This method ensures secure logout by:
+        1. Validating the access token
+        2. Revoking the token and associated refresh tokens
+        3. Clearing any server-side session data
+        4. Publishing UserLoggedOut domain event
+        5. Recording security context for audit trails
 
         Args:
             access_token: The user's `AccessToken` to be revoked.
             user: The `User` entity who is logging out.
+            security_context: Validated security context for audit trails.
             language: The language for any potential messages.
-            client_ip: The client's IP address for auditing.
-            user_agent: The client's user agent for auditing.
-            correlation_id: A unique ID for tracing the request.
+
+        Raises:
+            TokenRevocationError: If token revocation fails
+            ValidationError: If security context is invalid
         """
         raise NotImplementedError 

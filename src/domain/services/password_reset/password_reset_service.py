@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 import structlog
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     ForgotPasswordError,
     PasswordResetError,
     UserNotFoundError,
@@ -26,7 +26,7 @@ from src.domain.interfaces import (
 )
 from src.domain.value_objects.password import Password, HashedPassword
 from src.domain.value_objects.reset_token import ResetToken
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -310,7 +310,6 @@ class PasswordResetService:
             correlation_id: Correlation ID
         """
         event = PasswordResetCompletedEvent(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user.id,
             correlation_id=correlation_id,
             email=user.email,
@@ -341,7 +340,6 @@ class PasswordResetService:
             correlation_id: Correlation ID
         """
         event = PasswordResetFailedEvent(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user.id,
             correlation_id=correlation_id,
             email=user.email,

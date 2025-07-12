@@ -15,7 +15,7 @@ from src.domain.validation.input_sanitizer import (
     ValidationResult,
     ValidationSeverity
 )
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 

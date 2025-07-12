@@ -1,19 +1,25 @@
+"""Authentication and authorization dependencies for FastAPI.
+
+This module provides dependency injection functions for authentication and
+authorization services, following clean architecture principles.
+"""
+
 from __future__ import annotations
 
-# FastAPI & typing
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Tuple
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.exceptions import AuthenticationError, PermissionError
-
-# Project imports
-from src.domain.entities.user import Role, User
-from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
+from src.core.config.settings import settings
+from src.common.exceptions import AuthenticationError, PermissionError
+from src.domain.entities.role import Role
+from src.domain.entities.user import User
+# Removed ITokenService import to fix circular dependency - using local import instead
 from src.infrastructure.database.async_db import get_async_db_dependency
-from src.utils.i18n import get_translated_message
+from src.infrastructure.dependency_injection.auth_dependencies import get_token_service
+from src.common.i18n import get_translated_message
 
 __all__ = [
     "get_current_user",
@@ -55,7 +61,7 @@ def _auth_fail(request: Request, key: str) -> HTTPException:
 async def get_current_user(
     request: Request,
     credentials: TokenCred = None,
-    db_session: DBSession = None,
+    db_session: AsyncSession = Depends(get_async_db_dependency),
 ) -> User:
     """Get the current authenticated user from JWT token.
 
@@ -91,6 +97,12 @@ async def get_current_user(
 
     try:
         # Use the new domain token service for validation
+        if db_session is None:
+            raise _auth_fail(request, "database_session_unavailable")
+            
+        # Import here to avoid circular import
+        from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
+        
         token_service = DomainTokenService(db_session=db_session)
         payload = await token_service.validate_access_token(token, request.state.language)
         
@@ -110,8 +122,8 @@ async def get_current_user(
 
 
 async def get_current_admin_user(
+    request: Request,
     current_user: User = Depends(get_current_user),
-    request: Request = None,
 ) -> User:
     """Get the current authenticated user, ensuring they have admin role.
 
@@ -136,7 +148,7 @@ async def get_current_admin_user(
         - Supports internationalization
     """
     if current_user.role != Role.ADMIN:
-        detail = get_translated_message("insufficient_permissions", request.state.language if request else "en")
+        detail = get_translated_message("admin_privileges_required", request.state.language if request else "en")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=detail,

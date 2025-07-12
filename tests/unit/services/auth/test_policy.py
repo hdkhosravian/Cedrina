@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from casbin import Enforcer
 
-from src.core.exceptions import PermissionError
+from src.common.exceptions import PermissionError
 from src.domain.services.security.policy import PolicyService
 
 

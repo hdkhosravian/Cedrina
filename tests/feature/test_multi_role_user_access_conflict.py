@@ -42,11 +42,8 @@ async def test_multi_role_user_access_conflict(
         response = client.post(
             "/api/v1/admin/policies/add", json=policy_user_allow, headers=admin_headers
         )
-        # Accept both 200 (success) and any response since policy might already exist
-        assert response.status_code in [
-            200,
-            409,
-        ], f"Expected 200 or 409, got {response.status_code}"
+        # Test should expect only one specific outcome
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
     # Step 3: Test access to the resource (endpoint doesn't exist, so expecting 404)
     # In a real scenario, this would test role-based access

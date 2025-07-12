@@ -25,7 +25,6 @@ Key Components:
     - create_async_db_and_tables: Utility to create tables using the async engine.
 """
 
-import logging
 import urllib.parse as urlparse
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -34,12 +33,13 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
+import structlog
 
 from src.core.config.settings import settings
 from src.core.logging import logger
 
 # Configure logging for async database events
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # Construct the async database URL

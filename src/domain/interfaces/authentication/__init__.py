@@ -2,6 +2,13 @@
 
 This module defines interfaces for authentication-related services following
 Domain-Driven Design principles and dependency inversion.
+
+The interfaces are organized into logical groups:
+- Core Authentication: User login, registration, logout
+- Password Management: Password changes, resets, and policies
+- Email Confirmation: Email verification workflows
+- OAuth Integration: Third-party authentication
+- Security Services: Error classification and security operations
 """
 
 # Core authentication interfaces
@@ -26,6 +33,8 @@ from .email_confirmation import (
 
 # OAuth interfaces
 from .oauth import IOAuthService
+
+# Security services
 from .error_classification import IErrorClassificationService
 
 __all__ = [
@@ -47,5 +56,7 @@ __all__ = [
 
     # OAuth interfaces
     "IOAuthService",
+    
+    # Security services
     "IErrorClassificationService",
 ]

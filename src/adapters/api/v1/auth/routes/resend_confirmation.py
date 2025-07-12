@@ -14,7 +14,8 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
 )
 from src.adapters.api.v1.auth.schemas.requests import ResendConfirmationRequest
 from src.adapters.api.v1.auth.schemas import MessageResponse
-from src.core.exceptions import AuthenticationError, UserNotFoundError
+from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
+from src.common.exceptions import AuthenticationError, UserNotFoundError
 from src.domain.interfaces import (
     IErrorClassificationService
 )
@@ -24,7 +25,7 @@ from src.domain.services.email_confirmation.email_confirmation_request_service i
     EmailConfirmationRequestService,
 )
 from src.domain.value_objects.email import Email
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -49,20 +50,9 @@ async def resend_confirmation(
     Sends new confirmation email if user account requires activation.
     Only works for inactive accounts.
     """
-    # Generate correlation ID for request tracking
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="resend_confirmation",
-        operation="email_confirmation_resend"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "resend_confirmation", "email_confirmation_resend"
     )
     
     request_logger.info(
@@ -72,68 +62,41 @@ async def resend_confirmation(
     )
     
     try:
-        # Validate and create email value object
-        email = Email(payload.email)  # Auto-normalizes to lowercase
-        
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
-        request_logger.debug(
-            "Domain value objects created",
-            email_masked=secure_logging_service.mask_email(str(email)),
-            security_enhanced=True
+        # Validate email using domain value object
+        email = Email(payload.email)
+        
+        # Delegate to domain service for confirmation email resend
+        await confirmation_request_service.resend_confirmation_email(
+            email=email,
+            language=language,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            correlation_id=correlation_id,
         )
-        
-        # Delegate to domain service for user lookup, token generation, and email delivery
-        await confirmation_request_service.resend_confirmation_email(str(email), language)
         
         request_logger.info(
             "Email confirmation resend completed successfully",
-            email_masked=secure_logging_service.mask_email(str(email)),
-            security_enhanced=True
-        )
-
-        # Return localized success message
-        success_message = get_translated_message("confirmation_email_sent", language)
-        return MessageResponse(message=success_message)
-
-    except (ValueError, UserNotFoundError, AuthenticationError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Classify error for consistent response format
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Log the error with security context
-        request_logger.warning(
-            "Email confirmation resend failed",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
             email_masked=secure_logging_service.mask_email(payload.email),
             security_enhanced=True
         )
         
-        # Re-raise for FastAPI exception handlers
-        raise classified_error
+        # Return localized success message
+        success_message = get_translated_message("confirmation_email_resent", language)
+        return MessageResponse(message=success_message)
         
     except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Log unexpected errors for debugging
-        request_logger.error(
-            "Email confirmation resend failed - unexpected error",
-            error=str(e),
-            error_type=type(e).__name__,
-            email_masked=secure_logging_service.mask_email(payload.email),
-            security_enhanced=True
-        )
-        
-        # Create standardized error response
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+        # Handle authentication errors consistently
+        context_info = {
+            "email_masked": secure_logging_service.mask_email(payload.email)
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
+            context_info=context_info
         )
-        raise AuthenticationError(message=standardized_response["detail"])

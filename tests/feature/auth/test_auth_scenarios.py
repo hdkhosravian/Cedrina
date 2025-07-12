@@ -36,7 +36,7 @@ async def test_register_duplicate_username(async_client):
     await async_client.post("/api/v1/auth/register", json=data)
     dup = {**_unique_user_data(), "username": data["username"]}
     resp = await async_client.post("/api/v1/auth/register", json=dup)
-    assert resp.status_code in {400, 409}
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_register_duplicate_email(async_client):
     await async_client.post("/api/v1/auth/register", json=data)
     dup = {**_unique_user_data(), "email": data["email"]}
     resp = await async_client.post("/api/v1/auth/register", json=dup)
-    assert resp.status_code in {400, 409}
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_login_nonexistent_user(async_client):
         "/api/v1/auth/login",
         json={"username": "nouser", "password": "Str0ng!P4ssw0rd#123"},
     )
-    assert resp.status_code in {401, 422}
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -174,78 +174,90 @@ async def test_forgot_password_nonexistent_email(async_client):
 
 
 @pytest.mark.asyncio
-async def test_reset_password_success(async_client):
-    """Test successful password reset flow using production-safe pattern."""
-    # Step 1: Register a user
+async def test_reset_password_invalid_token_format(async_client):
+    """Test reset password with invalid token format that returns 422"""
     data = _unique_user_data()
-    register_resp = await async_client.post("/api/v1/auth/register", json=data)
-    assert register_resp.status_code == 201
+    await async_client.post("/api/v1/auth/register", json=data)
     
-    # Step 2: Request password reset
-    forgot_resp = await async_client.post(
-        "/api/v1/auth/forgot-password", 
-        json={"email": data["email"]}
-    )
-    assert forgot_resp.status_code == 200
-    
-    # Step 3: Since we can't access the database directly in production-safe tests,
-    # we need to work with what the API provides. The password reset flow should
-    # either return the token in the response (for test environments) or provide
-    # a way to verify the reset was successful.
-    
-    # For now, let's test the error handling by trying to reset with an invalid token
-    # This ensures the endpoint is working correctly
+    # Test with invalid token format
     invalid_reset_resp = await async_client.post(
         "/api/v1/auth/reset-password",
         json={"token": "invalid_token_64_chars_long_to_match_schema_requirement", "new_password": "N3w!P4ssw0rd#456"},
     )
     # Should return 422 Unprocessable Entity for invalid token format
     assert invalid_reset_resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reset_password_properly_formatted_invalid_token(async_client):
+    """Test reset password with properly formatted but invalid token that returns 400"""
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
     
-    # Step 4: Test with a properly formatted but invalid token
-    # This tests the schema validation and error handling
+    # Test with a properly formatted but invalid token
     properly_formatted_invalid_resp = await async_client.post(
         "/api/v1/auth/reset-password",
         json={"token": "a" * 64, "new_password": "N3w!P4ssw0rd#456"},
     )
     # Should return 400 Bad Request for invalid token
     assert properly_formatted_invalid_resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reset_password_missing_token(async_client):
+    """Test reset password with missing token that returns 422"""
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
     
-    # Step 5: Test with missing token (should return 422 validation error)
+    # Test with missing token
     missing_token_resp = await async_client.post(
         "/api/v1/auth/reset-password",
         json={"new_password": "N3w!P4ssw0rd#456"},
     )
     assert missing_token_resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reset_password_missing_password(async_client):
+    """Test reset password with missing password that returns 422"""
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
     
-    # Step 6: Test with missing password (should return 422 validation error)
+    # Test with missing password
     missing_password_resp = await async_client.post(
         "/api/v1/auth/reset-password",
         json={"token": "a" * 64},
     )
     assert missing_password_resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reset_password_weak_password(async_client):
+    """Test reset password with weak password that returns 400"""
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
     
-    # Step 7: Test with weak password (should return 400 Bad Request for weak password)
+    # Test with weak password
     weak_password_resp = await async_client.post(
         "/api/v1/auth/reset-password",
         json={"token": "a" * 64, "new_password": "weak"},
     )
     assert weak_password_resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reset_password_forgot_password_flow(async_client):
+    """Test the forgot password request flow"""
+    data = _unique_user_data()
+    register_resp = await async_client.post("/api/v1/auth/register", json=data)
+    assert register_resp.status_code == 201
     
-    # This test validates that:
-    # 1. The password reset request endpoint works correctly
-    # 2. The reset password endpoint properly validates input
-    # 3. Error handling works correctly for various scenarios
-    # 4. The API follows proper HTTP status codes
-    
-    # Note: To test the actual successful password reset flow, we would need
-    # either:
-    # 1. The API to return the reset token in the response (for test environments)
-    # 2. A test email service that captures and exposes sent emails
-    # 3. A way to query the database that works with the async session context
-    
-    # For now, this test ensures the endpoints are working correctly
-    # and handles the MissingGreenlet issue by not accessing the database directly
+    # Request password reset
+    forgot_resp = await async_client.post(
+        "/api/v1/auth/forgot-password", 
+        json={"email": data["email"]}
+    )
+    assert forgot_resp.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -381,14 +393,22 @@ async def test_confirm_email_success(async_client, monkeypatch):
     # In a real scenario, the user would receive the token via email
     mock_token = "mock_confirmation_token_for_testing"
     resp = await async_client.get(f"/api/v1/auth/confirm-email?token={mock_token}")
-    # Should fail with invalid token
-    assert resp.status_code in {400, 401, 422, 404}
+    # Should fail with invalid token - expect 422 for validation error
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_confirm_email_invalid_token(async_client):
+async def test_confirm_email_invalid_token_400_scenario(async_client):
+    """Test confirm email with invalid token that returns 400"""
     resp = await async_client.get("/api/v1/auth/confirm-email?token=invalid")
-    assert resp.status_code in {400, 404}
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_confirm_email_invalid_token_404_scenario(async_client):
+    """Test confirm email with invalid token that returns 404"""
+    resp = await async_client.get("/api/v1/auth/confirm-email?token=nonexistent")
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -402,12 +422,13 @@ async def test_confirm_email_already_confirmed(async_client, monkeypatch):
     # Since we can't access the database directly, we'll test with a mock token
     mock_token = "mock_confirmation_token_for_testing"
     resp = await async_client.get(f"/api/v1/auth/confirm-email?token={mock_token}")
-    # Should fail with invalid token
-    assert resp.status_code in {400, 401, 422, 404}
+    # Should fail with invalid token - expect 422 for validation error
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_login_before_email_confirmation(async_client, monkeypatch):
+async def test_login_before_email_confirmation_401_scenario(async_client, monkeypatch):
+    """Test login before email confirmation that returns 401"""
     monkeypatch.setattr(
         "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
     )
@@ -417,7 +438,37 @@ async def test_login_before_email_confirmation(async_client, monkeypatch):
         "/api/v1/auth/login",
         json={"username": data["username"], "password": data["password"]},
     )
-    assert resp.status_code in {401, 403, 422}
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_before_email_confirmation_403_scenario(async_client, monkeypatch):
+    """Test login before email confirmation that returns 403"""
+    monkeypatch.setattr(
+        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
+    )
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
+    resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": data["username"], "password": data["password"]},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_login_before_email_confirmation_422_scenario(async_client, monkeypatch):
+    """Test login before email confirmation that returns 422"""
+    monkeypatch.setattr(
+        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
+    )
+    data = _unique_user_data()
+    await async_client.post("/api/v1/auth/register", json=data)
+    resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": data["username"], "password": data["password"]},
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

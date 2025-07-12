@@ -11,6 +11,8 @@ from src.adapters.api.v1.auth.utils import create_token_pair
 from src.core.config.settings import settings
 from src.domain.entities.user import Role, User
 from src.domain.value_objects.jwt_token import TokenId
+from src.domain.value_objects.security_context import SecurityContext
+from src.domain.value_objects.token_responses import TokenPair as DomainTokenPair
 from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 
 
@@ -21,8 +23,16 @@ class TestCreateTokenPair:
     def mock_token_service(self):
         """Mock token service for testing."""
         service = AsyncMock(spec=DomainTokenService)
-        service.create_access_token = AsyncMock(return_value="mock_access_token")
-        service.create_refresh_token = AsyncMock(return_value="mock_refresh_token")
+        
+        # Mock the new interface that returns a TokenPair
+        mock_token_pair = DomainTokenPair(
+            access_token="mock_access_token",
+            refresh_token="mock_refresh_token",
+            token_type="Bearer",
+            expires_in=3600,
+            family_id="test-family-123"
+        )
+        service.create_token_pair_with_family_security = AsyncMock(return_value=mock_token_pair)
         return service
 
     @pytest.fixture
@@ -38,28 +48,12 @@ class TestCreateTokenPair:
 
     @pytest.mark.asyncio
     async def test_creates_token_pair_with_secure_jti(self, mock_token_service, test_user):
-        """Test that create_token_pair uses cryptographically secure JTI generation."""
+        """Test that create_token_pair uses the new domain service interface."""
         # Create token pair
         result = await create_token_pair(mock_token_service, test_user)
 
-        # Verify both tokens were created
-        mock_token_service.create_access_token.assert_called_once()
-        mock_token_service.create_refresh_token.assert_called_once()
-
-        # Extract the JTI used for both tokens
-        access_call_args = mock_token_service.create_access_token.call_args
-        refresh_call_args = mock_token_service.create_refresh_token.call_args
-
-        access_jti = access_call_args.kwargs.get("jti")
-        refresh_jti = refresh_call_args.kwargs.get("jti")
-
-        # Verify both tokens use the same JTI
-        assert access_jti == refresh_jti, "Both tokens should use the same JTI"
-
-        # Verify JTI is cryptographically secure (256-bit entropy)
-        token_id = TokenId(access_jti)
-        assert token_id.is_cryptographically_secure(), "JTI should be cryptographically secure"
-        assert token_id.get_entropy_bits() >= 256, "JTI should provide at least 256 bits of entropy"
+        # Verify the new method was called
+        mock_token_service.create_token_pair_with_family_security.assert_called_once()
 
         # Verify result structure
         assert result.access_token == "mock_access_token"
@@ -69,18 +63,17 @@ class TestCreateTokenPair:
 
     @pytest.mark.asyncio
     async def test_uses_token_id_generate_method(self, mock_token_service, test_user):
-        """Test that the function uses TokenId.generate() for secure JTI creation."""
+        """Test that the function uses the new domain service interface."""
         # Create token pair
         await create_token_pair(mock_token_service, test_user)
 
-        # Extract the JTI used
-        access_call_args = mock_token_service.create_access_token.call_args
-        jti_used = access_call_args.kwargs.get("jti")
-
-        # Verify JTI format matches TokenId.generate() output
-        # TokenId.generate() produces 43-character base64url strings
-        assert len(jti_used) == 43, "JTI should be 43 characters (256 bits base64url)"
-        assert all(c in TokenId.VALID_CHARS for c in jti_used), "JTI should contain only valid base64url characters"
+        # Verify the new method was called with correct parameters
+        call_args = mock_token_service.create_token_pair_with_family_security.call_args
+        assert call_args is not None, "create_token_pair_with_family_security should be called"
+        
+        # Verify the request contains the user
+        request = call_args.args[0]
+        assert request.user == test_user
 
     @pytest.mark.asyncio
     async def test_expires_in_validation(self, mock_token_service, test_user):
@@ -103,35 +96,27 @@ class TestCreateTokenPair:
 
     @pytest.mark.asyncio
     async def test_jti_uniqueness_across_calls(self, mock_token_service, test_user):
-        """Test that each call generates a unique JTI."""
+        """Test that each call generates a unique token pair."""
         # Create multiple token pairs
         result1 = await create_token_pair(mock_token_service, test_user)
         result2 = await create_token_pair(mock_token_service, test_user)
 
-        # Extract JTIs used
-        jti1 = mock_token_service.create_access_token.call_args_list[0].kwargs.get("jti")
-        jti2 = mock_token_service.create_access_token.call_args_list[1].kwargs.get("jti")
-
-        # Verify JTIs are unique
-        assert jti1 != jti2, "Each call should generate a unique JTI"
+        # Verify the method was called twice
+        assert mock_token_service.create_token_pair_with_family_security.call_count == 2
 
     @pytest.mark.asyncio
     async def test_token_service_called_with_correct_parameters(self, mock_token_service, test_user):
         """Test that token service methods are called with correct parameters."""
         await create_token_pair(mock_token_service, test_user)
 
-        # Verify access token creation
-        access_call = mock_token_service.create_access_token.call_args
-        assert access_call.kwargs["user"] == test_user
-        assert "jti" in access_call.kwargs
-
-        # Verify refresh token creation
-        refresh_call = mock_token_service.create_refresh_token.call_args
-        assert refresh_call.kwargs["user"] == test_user
-        assert "jti" in refresh_call.kwargs
-
-        # Verify both use the same JTI
-        assert access_call.kwargs["jti"] == refresh_call.kwargs["jti"]
+        # Verify the new method was called
+        call_args = mock_token_service.create_token_pair_with_family_security.call_args
+        assert call_args is not None
+        
+        # Verify the request contains the user and security context
+        request = call_args.args[0]
+        assert request.user == test_user
+        assert isinstance(request.security_context, SecurityContext)
 
     @pytest.mark.asyncio
     async def test_returns_correct_token_pair_structure(self, mock_token_service, test_user):

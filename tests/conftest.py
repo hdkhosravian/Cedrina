@@ -158,7 +158,7 @@ async def mock_async_session():
 @pytest_asyncio.fixture(scope="function")
 async def mock_user_service():
     with patch(
-        "src.domain.services.authentication.user_authentication_service.UserAuthenticationService", autospec=True
+        "src.domain.services.authentication.unified_authentication_service.UnifiedAuthenticationService", autospec=True
     ) as mock:
         yield mock
 
@@ -271,12 +271,12 @@ def create_db_and_tables():
     from src.infrastructure.database.database import engine
     from src.domain.entities.user import User
     from src.domain.entities.session import Session
-    from src.domain.entities.token_family import TokenFamily
-    
+    from src.infrastructure.database.token_family_model import TokenFamilyModel
+
     # Import all models to ensure they're registered
     from src.domain.entities import user, session, token_family
-    
+
     # Create tables
     User.metadata.create_all(bind=engine)
     Session.metadata.create_all(bind=engine)
-    TokenFamily.metadata.create_all(bind=engine)
+    TokenFamilyModel.metadata.create_all(bind=engine)

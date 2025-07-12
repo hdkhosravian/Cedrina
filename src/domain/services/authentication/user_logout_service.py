@@ -18,7 +18,7 @@ from typing import Optional
 
 import structlog
 
-from src.core.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError
 from src.domain.entities.user import User
 from src.domain.events.authentication_events import UserLoggedOutEvent
 from src.domain.interfaces.repositories import IUserRepository
@@ -28,12 +28,14 @@ from src.domain.interfaces import (
     IUserLogoutService,
 )
 from src.domain.value_objects.jwt_token import AccessToken, RefreshToken
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+
+from .base_authentication_service import BaseAuthenticationService, ServiceContext
 
 logger = structlog.get_logger(__name__)
 
 
-class UserLogoutService(IUserLogoutService):
+class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
     """Domain service for user logout operations following DDD principles.
     
     This service encapsulates all logout business logic and follows
@@ -70,8 +72,8 @@ class UserLogoutService(IUserLogoutService):
             Dependencies are injected through interfaces, following
             dependency inversion principle from SOLID.
         """
+        super().__init__(event_publisher)
         self._token_service = token_service
-        self._event_publisher = event_publisher
         
         logger.info(
             "UserLogoutService initialized",
@@ -124,16 +126,24 @@ class UserLogoutService(IUserLogoutService):
         - Secure logging with sensitive data masking
         - Fail-secure error handling
         """
-        try:
+        context = ServiceContext(
+            correlation_id=correlation_id,
+            language=language,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            operation="user_logout"
+        )
+        
+        async with self._operation_context(context) as ctx:
             # Log logout attempt with security context
             logger.info(
                 "User logout initiated",
                 user_id=user.id,
                 username=user.username,
                 access_token_id=access_token.get_token_id().mask_for_logging(),
-                correlation_id=correlation_id,
-                client_ip=client_ip,
-                user_agent_length=len(user_agent) if user_agent else 0,
+                correlation_id=ctx.correlation_id,
+                client_ip=self._mask_ip(ctx.client_ip),
+                user_agent_length=len(ctx.user_agent) if ctx.user_agent else 0,
                 security_context_captured=True
             )
             
@@ -144,13 +154,7 @@ class UserLogoutService(IUserLogoutService):
             await self._token_service.revoke_access_token(str(access_token.get_token_id()))
             
             # Publish domain event for security monitoring and audit trails
-            await self._publish_logout_event(
-                user=user,
-                session_duration=session_duration,
-                correlation_id=correlation_id,
-                user_agent=user_agent,
-                ip_address=client_ip,
-            )
+            await self._publish_logout_event(user, session_duration, ctx)
             
             # Log successful logout
             logger.info(
@@ -158,31 +162,8 @@ class UserLogoutService(IUserLogoutService):
                 user_id=user.id,
                 username=user.username,
                 session_duration_seconds=session_duration,
-                correlation_id=correlation_id,
+                correlation_id=ctx.correlation_id,
                 logout_method="user_initiated"
-            )
-            
-        except AuthenticationError:
-            # Re-raise authentication errors to be handled by caller
-            logger.warning(
-                "Logout failed due to authentication error",
-                user_id=user.id,
-                username=user.username,
-                correlation_id=correlation_id
-            )
-            raise
-        except Exception as e:
-            # Log unexpected errors for debugging while maintaining security
-            logger.error(
-                "Unexpected error during logout",
-                user_id=user.id,
-                username=user.username,
-                correlation_id=correlation_id,
-                error_type=type(e).__name__,
-                error_message=str(e)
-            )
-            raise AuthenticationError(
-                get_translated_message("logout_failed_internal_error", language)
             )
     
     def _calculate_session_duration(self, access_token: AccessToken) -> Optional[int]:
@@ -217,46 +198,38 @@ class UserLogoutService(IUserLogoutService):
         self,
         user: User,
         session_duration: Optional[int],
-        correlation_id: str,
-        user_agent: str,
-        ip_address: str,
+        context: ServiceContext,
     ) -> None:
         """Publish domain event for logout operation.
         
         Args:
             user: User who logged out
             session_duration: Duration of the session in seconds
-            correlation_id: Request correlation ID
-            user_agent: User agent string
-            ip_address: Client IP address
+            context: Service context
         """
-        try:
-            event = UserLoggedOutEvent.create(
-                user_id=user.id,
-                username=user.username,
-                logout_reason="user_initiated",
-                correlation_id=correlation_id,
-                user_agent=user_agent,
-                ip_address=ip_address,
-                session_duration=session_duration,
-            )
+        event = UserLoggedOutEvent.create(
+            user_id=user.id,
+            username=user.username,
+            logout_reason="user_initiated",
+            correlation_id=context.correlation_id,
+            user_agent=context.user_agent,
+            ip_address=context.client_ip,
+            session_duration=session_duration,
+        )
+        
+        await self._publish_domain_event(event, context, logger)
+    
+    async def _validate_operation_prerequisites(self, context: ServiceContext) -> None:
+        """Validate operation prerequisites for user logout.
+        
+        Args:
+            context: Service context
             
-            await self._event_publisher.publish(event)
-            
-            logger.debug(
-                "Logout domain event published",
-                user_id=user.id,
-                username=user.username,
-                event_type=type(event).__name__,
-                correlation_id=correlation_id
-            )
-            
-        except Exception as e:
-            # Log but don't fail logout for event publishing errors
-            logger.warning(
-                "Failed to publish logout domain event",
-                user_id=user.id,
-                username=user.username,
-                error=str(e),
-                event_publishing_failure=True
+        Raises:
+            AuthenticationError: If prerequisites are not met
+        """
+        # User logout service requires token service to be available
+        if not self._token_service:
+            raise AuthenticationError(
+                get_translated_message("service_unavailable", context.language)
             ) 

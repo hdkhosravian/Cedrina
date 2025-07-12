@@ -14,8 +14,8 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound, TemplateErro
 from structlog import get_logger
 
 from src.core.config.email import EmailSettings
-from src.core.exceptions import EmailServiceError, TemplateRenderError
-from src.utils.i18n import get_translated_message
+from src.common.exceptions import EmailServiceError, TemplateRenderError
+from src.common.i18n import get_translated_message
 
 logger = get_logger(__name__)
 

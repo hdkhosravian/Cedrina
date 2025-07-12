@@ -1,5 +1,5 @@
-from src.core.exceptions import AuthenticationError, RateLimitError
-from src.utils.i18n import get_translated_message
+from src.common.exceptions import AuthenticationError, RateLimitError
+from src.common.i18n import get_translated_message
 
 
 def test_authentication_error_default():

@@ -199,6 +199,18 @@ msgstr "Maximum number of concurrent sessions exceeded"
 
 # Generic error messages for preventing information disclosure (2025-01-27)
 
+msgid "token_creation_failed"
+msgstr "Token creation failed"
+
+msgid "token_refresh_failed"
+msgstr "Token refresh failed"
+
+msgid "insufficient_permissions"
+msgstr "Insufficient permissions"
+
+msgid "token_creation_infrastructure_error"
+msgstr "Token creation infrastructure error"
+
 msgid "invalid_credentials_generic"
 msgstr "Invalid credentials provided"
 
@@ -210,6 +222,30 @@ msgstr "The provided input is not valid"
 
 msgid "service_temporarily_unavailable"
 msgstr "Service is temporarily unavailable"
+
+msgid "token_validation_failed"
+msgstr "Token validation failed"
+
+msgid "token_validation_infrastructure_error"
+msgstr "Token validation infrastructure error"
+
+msgid "session_revocation_failed"
+msgstr "Session revocation failed"
+
+msgid "token_refresh_failed"
+msgstr "Token refresh failed"
+
+msgid "token_family_not_found"
+msgstr "Token family not found"
+
+msgid "invalid_token_family"
+msgstr "Invalid token family"
+
+msgid "user_account_inactive"
+msgstr "User account is inactive"
+
+msgid "session_creation_failed"
+msgstr "Session creation failed"
 
 msgid "too_many_requests_generic"
 msgstr "Too many requests. Please try again later"

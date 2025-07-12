@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from src.core.exceptions import RateLimitError
+from src.common.exceptions import RateLimitError
 from src.core.rate_limiting.entities import RateLimitRequest
 from src.core.rate_limiting.services import (
     RateLimitContext,

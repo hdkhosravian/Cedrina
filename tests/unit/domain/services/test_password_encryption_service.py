@@ -18,7 +18,7 @@ import pytest_asyncio
 from cryptography.fernet import Fernet
 from unittest.mock import Mock, patch
 
-from src.core.exceptions import DecryptionError, EncryptionError
+from src.common.exceptions import DecryptionError, EncryptionError
 from src.infrastructure.services.authentication.password_encryption import PasswordEncryptionService
 
 

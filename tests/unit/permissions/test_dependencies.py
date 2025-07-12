@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.exceptions import PermissionError
+from src.common.exceptions import PermissionError
 from src.domain.entities.user import Role, User
 from src.permissions.dependencies import check_permission
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 # Mock Request class

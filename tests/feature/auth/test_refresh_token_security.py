@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.main import app
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError, RateLimitExceededError
+from src.common.exceptions import AuthenticationError, RateLimitExceededError
 from src.domain.entities.user import User, Role
 from src.domain.value_objects.jwt_token import TokenId
 from src.infrastructure.database.async_db import get_async_db
@@ -45,7 +45,6 @@ from src.infrastructure.redis import get_redis
 from src.core.dependencies.auth import get_current_user
 from src.infrastructure.dependency_injection.auth_dependencies import (
     get_token_service,
-    get_enhanced_token_validation_service,
 )
 from tests.utils.security_helpers import SecurityTestHelpers
 

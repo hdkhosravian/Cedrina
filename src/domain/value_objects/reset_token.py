@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import ClassVar
 
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 @dataclass(frozen=True)

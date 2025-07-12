@@ -6,7 +6,7 @@ authentication flows, provider integration, and user profile management.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only OAuth authentication operations
-- Domain Value Objects: Uses OAuthProvider, OAuthToken, and OAuthUserInfo value objects
+- Domain Value Objects: Uses OAuthProvider, OAuthToken, and SecurityContext value objects
 - Domain Events: Publishes OAuth authentication events for audit trails
 - Ubiquitous Language: Method names reflect business concepts
 - Fail-Safe Security: Implements CSRF protection and secure token handling
@@ -19,6 +19,7 @@ from src.domain.entities.oauth_profile import OAuthProfile
 from src.domain.entities.user import User
 from src.domain.value_objects.oauth_provider import OAuthProvider
 from src.domain.value_objects.oauth_token import OAuthToken
+from src.domain.value_objects.security_context import SecurityContext
 
 
 class IOAuthService(ABC):
@@ -32,7 +33,7 @@ class IOAuthService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only OAuth authentication operations
-    - Domain Value Objects: Uses OAuthProvider, OAuthToken, and OAuthUserInfo value objects
+    - Domain Value Objects: Uses OAuthProvider, OAuthToken, and SecurityContext value objects
     - Domain Events: Publishes OAuth authentication events for audit trails
     - Ubiquitous Language: Method names reflect business concepts
     - Fail-Safe Security: Implements CSRF protection and secure token handling
@@ -43,10 +44,8 @@ class IOAuthService(ABC):
         self,
         provider: OAuthProvider,
         token: OAuthToken,
-        language: str = "en",
-        client_ip: str = "",
-        user_agent: str = "",
-        correlation_id: str = "",
+        security_context: SecurityContext,
+        language: str = "en"
     ) -> Tuple[User, OAuthProfile]:
         """Authenticates a user via an OAuth provider.
 
@@ -56,14 +55,16 @@ class IOAuthService(ABC):
         Args:
             provider: The `OAuthProvider` value object (e.g., Google).
             token: The `OAuthToken` received from the provider.
+            security_context: Validated security context for audit trails.
             language: The language for error messages or communication.
-            client_ip: The client's IP address for auditing.
-            user_agent: The client's user agent for auditing.
-            correlation_id: A unique ID for tracing the request.
 
         Returns:
             A tuple containing the authenticated `User` entity and their
             `OAuthProfile`.
+
+        Raises:
+            OAuthAuthenticationError: If OAuth authentication fails
+            ValidationError: If security context is invalid
         """
         raise NotImplementedError
 

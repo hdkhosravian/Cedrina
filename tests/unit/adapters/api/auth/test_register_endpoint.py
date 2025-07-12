@@ -23,20 +23,18 @@ async def test_register_successful(async_client: httpx.AsyncClient, db_session):
         json=user_data,
     )
 
-    # The test might get 409 if there's data collision, or 201 if successful
-    # This is expected behavior in a shared test database
-    assert response.status_code in [status.HTTP_201_CREATED, status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_ENTITY]
-    if response.status_code == status.HTTP_201_CREATED:
-        response_data = response.json()
-        assert "user" in response_data
-        assert "tokens" in response_data
-        assert response_data["user"]["email"] == user_data["email"]
-        assert response_data["user"]["username"] == user_data["username"]
-        
-        # Verify tokens structure
-        tokens = response_data["tokens"]
-        assert "access_token" in tokens
-        assert "refresh_token" in tokens
+    # Test should expect only one specific outcome
+    assert response.status_code == status.HTTP_201_CREATED
+    response_data = response.json()
+    assert "user" in response_data
+    assert "tokens" in response_data
+    assert response_data["user"]["email"] == user_data["email"]
+    assert response_data["user"]["username"] == user_data["username"]
+    
+    # Verify tokens structure
+    tokens = response_data["tokens"]
+    assert "access_token" in tokens
+    assert "refresh_token" in tokens
 
 
 @pytest.mark.asyncio
@@ -57,10 +55,9 @@ async def test_register_duplicate_email(async_client: httpx.AsyncClient, db_sess
         json=duplicate_data,
     )
 
-    # We expect either 409 (conflict) or 422 (validation error)
-    assert response2.status_code in [status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_ENTITY]
-    if response2.status_code == status.HTTP_409_CONFLICT:
-        assert "detail" in response2.json()
+    # Test should expect only one specific outcome
+    assert response2.status_code == status.HTTP_409_CONFLICT
+    assert "detail" in response2.json()
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, Mock
 
-from src.core.exceptions import UserNotFoundError
+from src.common.exceptions import UserNotFoundError
 from src.domain.entities.user import User
 from src.domain.services.email_confirmation.email_confirmation_service import (
     EmailConfirmationService,

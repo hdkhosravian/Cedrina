@@ -8,7 +8,7 @@ from jose import jwt
 from src.infrastructure.dependency_injection.auth_dependencies import get_token_service, get_user_logout_service
 from src.core.config.settings import settings
 from src.core.dependencies.auth import get_current_user
-from src.core.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError
 from src.domain.entities.user import Role, User
 from src.infrastructure.database.async_db import get_async_db
 from src.infrastructure.redis import get_redis

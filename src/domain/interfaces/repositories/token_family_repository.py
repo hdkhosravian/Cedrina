@@ -10,10 +10,13 @@ of infrastructure concerns while providing clear contracts for data operations.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from src.domain.entities.token_family import TokenFamily, TokenFamilyStatus
+from src.domain.value_objects.token_family_status import TokenFamilyStatus
 from src.domain.value_objects.jwt_token import TokenId
+
+if TYPE_CHECKING:
+    from src.domain.entities.token_family import TokenFamily
 
 
 class ITokenFamilyRepository(ABC):
@@ -41,7 +44,7 @@ class ITokenFamilyRepository(ABC):
         client_ip: Optional[str] = None,
         user_agent: Optional[str] = None,
         correlation_id: Optional[str] = None
-    ) -> TokenFamily:
+    ) -> "TokenFamily":
         """
         Create a new token family.
         
@@ -63,7 +66,7 @@ class ITokenFamilyRepository(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    async def get_family_by_id(self, family_id: str) -> Optional[TokenFamily]:
+    async def get_family_by_id(self, family_id: str) -> Optional["TokenFamily"]:
         """
         Retrieve a token family by ID.
         
@@ -79,7 +82,7 @@ class ITokenFamilyRepository(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    async def get_family_by_token(self, token_id: TokenId) -> Optional[TokenFamily]:
+    async def get_family_by_token(self, token_id: TokenId) -> Optional["TokenFamily"]:
         """
         Retrieve a token family by token ID.
         
@@ -95,7 +98,7 @@ class ITokenFamilyRepository(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    async def update_family(self, token_family: TokenFamily) -> TokenFamily:
+    async def update_family(self, token_family: "TokenFamily") -> "TokenFamily":
         """
         Update an existing token family.
         
@@ -196,7 +199,7 @@ class ITokenFamilyRepository(ABC):
         user_id: int,
         status: Optional[TokenFamilyStatus] = None,
         limit: int = 100
-    ) -> List[TokenFamily]:
+    ) -> List["TokenFamily"]:
         """
         Get token families for a user.
         
@@ -214,7 +217,7 @@ class ITokenFamilyRepository(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    async def get_expired_families(self, limit: int = 1000) -> List[TokenFamily]:
+    async def get_expired_families(self, limit: int = 1000) -> List["TokenFamily"]:
         """
         Get expired token families for cleanup.
         
@@ -255,7 +258,7 @@ class ITokenFamilyRepository(ABC):
         self,
         since: Optional[datetime] = None,
         limit: int = 100
-    ) -> List[TokenFamily]:
+    ) -> List["TokenFamily"]:
         """
         Get compromised token families for analysis.
         

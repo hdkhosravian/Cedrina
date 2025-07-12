@@ -11,9 +11,10 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any
 
-from src.core.exceptions import AuthenticationError, SessionLimitExceededError
+from src.common.exceptions import AuthenticationError, SessionLimitExceededError
 from src.domain.entities.session import Session
-from src.domain.entities.token_family import TokenFamily, TokenFamilyStatus
+from src.domain.entities.token_family import TokenFamily
+from src.domain.value_objects.token_family_status import TokenFamilyStatus
 from src.domain.events.authentication_events import (
     SessionCreatedEvent,
     SessionRevokedEvent,
@@ -116,7 +117,7 @@ class TestUnifiedSessionService:
         published_event = mock_event_publisher.publish.call_args[0][0]
         assert isinstance(published_event, SessionCreatedEvent)
         assert published_event.user_id == user_id
-        assert published_event.jti == jti
+        assert published_event.session_id == jti
         assert published_event.family_id == family_id
     
     @pytest.mark.asyncio
@@ -154,7 +155,7 @@ class TestUnifiedSessionService:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         
         # Mock database error
-        mock_db_session.commit.side_effect = Exception("Database error")
+        mock_db_session.flush.side_effect = Exception("Database error")
         
         with patch.object(service, '_get_active_session_count', return_value=0):
             with pytest.raises(AuthenticationError):
@@ -195,7 +196,7 @@ class TestUnifiedSessionService:
         published_event = mock_event_publisher.publish.call_args[0][0]
         assert isinstance(published_event, SessionActivityUpdatedEvent)
         assert published_event.user_id == user_id
-        assert published_event.jti == jti
+        assert published_event.session_id == jti
     
     @pytest.mark.asyncio
     async def test_update_session_activity_session_not_found(
@@ -306,7 +307,7 @@ class TestUnifiedSessionService:
         published_event = mock_event_publisher.publish.call_args[0][0]
         assert isinstance(published_event, SessionRevokedEvent)
         assert published_event.user_id == user_id
-        assert published_event.jti == jti
+        assert published_event.session_id == jti
         assert published_event.reason == reason
     
     @pytest.mark.asyncio
@@ -618,7 +619,7 @@ class TestUnifiedSessionService:
         user_id = 1
         
         # Mock database error
-        mock_db_session.commit.side_effect = Exception("Database error")
+        mock_db_session.flush.side_effect = Exception("Database error")
         
         with patch.object(service, 'get_session', return_value=test_session):
             result = await service.update_session_activity(jti=jti, user_id=user_id)

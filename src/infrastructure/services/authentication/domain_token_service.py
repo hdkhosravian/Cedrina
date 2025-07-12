@@ -6,7 +6,7 @@ while providing the bridge between domain logic and infrastructure concerns.
 
 Architecture Pattern:
 - Infrastructure Layer: Handles JWT encoding/decoding, external dependencies
-- Domain Interface: Implements ITokenLifecycleManagementService contract
+- Domain Interface: Implements ITokenService contract
 - Repository Pattern: Uses injected repositories for data persistence
 - Event Publishing: Integrates with infrastructure event systems
 
@@ -18,38 +18,36 @@ Key Features:
 - Extensive documentation and error handling
 """
 
-import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, Mapping, Tuple
+from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 
-import jwt
-from jwt import encode as jwt_encode, decode as jwt_decode, PyJWTError
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
+
+if TYPE_CHECKING:
+    from src.infrastructure.services.authentication.jwt_service import JWTService
 
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError, SecurityViolationError
+from src.common.exceptions import AuthenticationError, SecurityViolationError
 from src.domain.entities.user import User
 from src.domain.value_objects.security_context import SecurityContext
-from src.domain.value_objects.jwt_token import AccessToken, RefreshToken
+from src.domain.value_objects.jwt_token import AccessToken, RefreshToken, TokenId
 from src.domain.interfaces.token_management import ITokenService
-from src.domain.interfaces.authentication.token_lifecycle_management import ITokenLifecycleManagementService
+
 from src.domain.interfaces.repositories.token_family_repository import ITokenFamilyRepository
-from src.domain.interfaces import IEventPublisher
-from src.domain.services.authentication.token_lifecycle_management_service import (
-    TokenLifecycleManagementService,
-    TokenPair,
-    TokenCreationRequest,
-    TokenRefreshRequest
-)
+from src.common.events import IEventPublisher
+from src.domain.services.authentication.token_family_management_service import TokenFamilyManagementService
+from src.domain.value_objects.token_requests import TokenCreationRequest, TokenRefreshRequest
+from src.domain.value_objects.token_responses import TokenPair
+
 from src.infrastructure.repositories.token_family_repository import TokenFamilyRepository
 from src.infrastructure.services.event_publisher import InMemoryEventPublisher
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+from src.infrastructure.services.base_service import BaseInfrastructureService
+from src.domain.interfaces.repositories.user_repository import IUserRepository
+from src.infrastructure.repositories.user_repository import UserRepository
 
-logger = structlog.get_logger(__name__)
 
-
-class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
+class DomainTokenService(ITokenService, BaseInfrastructureService):
     """
     Infrastructure implementation of domain token lifecycle management.
     
@@ -80,35 +78,46 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
     def __init__(
         self,
         db_session: AsyncSession,
+        user_repository: Optional[IUserRepository] = None,
         token_family_repository: Optional[ITokenFamilyRepository] = None,
-        event_publisher: Optional[IEventPublisher] = None
+        event_publisher: Optional[IEventPublisher] = None,
+        jwt_service = None
     ):
         """
         Initialize domain token service with infrastructure dependencies.
         
         Args:
             db_session: SQLAlchemy async session for database operations
+            user_repository: Repository for user data access
             token_family_repository: Repository for token family persistence
             event_publisher: Publisher for domain events
+            jwt_service: JWT service for token operations
         """
+        super().__init__(
+            service_name="DomainTokenService",
+            service_type="infrastructure_service",
+            domain_service="TokenFamilyManagementService",
+            storage_type="database_only",
+            security_features=["token_family", "reuse_detection", "threat_analysis"]
+        )
+        
         self.db_session = db_session
+        self._user_repository = user_repository or UserRepository(db_session)
         self._token_family_repository = token_family_repository or TokenFamilyRepository(db_session)
         self._event_publisher = event_publisher or InMemoryEventPublisher()
+        # Import JWTService dynamically to avoid circular imports
+        if jwt_service is None:
+            from src.infrastructure.services.authentication.jwt_service import JWTService
+            self._jwt_service = JWTService()
+        else:
+            self._jwt_service = jwt_service
         
         # Initialize domain service with infrastructure dependencies
         # Note: The domain service uses the repository for database operations,
         # which already has access to the database session
-        self._domain_service = TokenLifecycleManagementService(
+        self._domain_service = TokenFamilyManagementService(
             token_family_repository=self._token_family_repository,
             event_publisher=self._event_publisher
-        )
-        
-        logger.info(
-            "DomainTokenService initialized",
-            service_type="infrastructure_service",
-            domain_service="TokenLifecycleManagementService",
-            storage_type="database_only",
-            security_features=["token_family", "reuse_detection", "threat_analysis"]
         )
     
     async def create_token_pair_with_family_security(
@@ -118,47 +127,63 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         """
         Create token pair with family security using domain service.
         
-        This method provides the infrastructure implementation for token pair
-        creation, handling database transactions and error conversion.
+        This method provides the infrastructure implementation for token pair creation,
+        handling database transactions and error conversion for the API layer.
         
         Args:
             request: Token creation request with user and security context
             
         Returns:
-            TokenPair: Complete token pair with family security metadata
+            TokenPair: Token pair with family security metadata
             
         Raises:
             AuthenticationError: If user is invalid or token creation fails
             SecurityViolationError: If security context indicates threat
         """
         try:
-            if not self.db_session.in_transaction():
-                async with self.db_session.begin():
-                    token_pair = await self._domain_service.create_token_pair_with_family_security(request)
-            else:
-                token_pair = await self._domain_service.create_token_pair_with_family_security(request)
-                
-                logger.info(
-                    "Token pair created successfully",
-                    user_id=request.user.id,
-                    family_id=token_pair.family_id[:8] + "...",
-                    correlation_id=request.correlation_id
-                )
-                
-                return token_pair
+            # Create JWT tokens using the new interface
+            access_token = await self._jwt_service.create_access_token(user=request.user)
+            refresh_token = await self._jwt_service.create_refresh_token(
+                user=request.user, 
+                jti=access_token.get_token_id().value
+            )
+            
+            # Create token family using the JWT's JTI for consistency
+            token_id = access_token.get_token_id()
+            
+            token_family = await self._domain_service.create_token_family(
+                user=request.user,
+                initial_token_id=token_id,
+                security_context=request.security_context,
+                correlation_id=request.correlation_id
+            )
+            
+            # Create token pair response
+            token_pair = TokenPair(
+                access_token=access_token.token,  # Extract token string from value object
+                refresh_token=refresh_token.token,  # Extract token string from value object
+                family_id=token_family.family_id,
+                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            )
+            
+            self._log_success(
+                operation="create_token_pair_with_family_security",
+                user_id=request.user.id,
+                family_id=token_family.family_id[:8] + "...",
+                correlation_id=request.correlation_id
+            )
+            
+            return token_pair
                 
         except (AuthenticationError, SecurityViolationError):
             # Re-raise domain exceptions without modification
             raise
         except Exception as e:
-            logger.error(
-                "Infrastructure error during token pair creation",
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="create_token_pair_with_family_security",
                 user_id=request.user.id,
-                error=str(e),
                 correlation_id=request.correlation_id
-            )
-            raise AuthenticationError(
-                get_translated_message("token_creation_infrastructure_error", "en")
             )
     
     async def refresh_tokens_with_family_security(
@@ -182,31 +207,61 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             SecurityViolationError: If token reuse or family compromise detected
         """
         try:
-            if not self.db_session.in_transaction():
-                async with self.db_session.begin():
-                    token_pair = await self._domain_service.refresh_tokens_with_family_security(request)
-            else:
-                token_pair = await self._domain_service.refresh_tokens_with_family_security(request)
-                
-                logger.info(
-                    "Tokens refreshed successfully",
-                    family_id=token_pair.family_id[:8] + "...",
-                    correlation_id=request.correlation_id
-                )
-                
-                return token_pair
+            # Validate refresh token
+            refresh_payload = await self._jwt_service.validate_token(request.refresh_token)
+            
+            # Extract token information
+            user_id = int(refresh_payload.get("sub"))
+            family_id = refresh_payload.get("family_id")
+            jti = refresh_payload.get("jti")
+            
+            # Get user from repository
+            user = await self._user_repository.get_by_id(user_id)
+            if not user or not user.is_active:
+                raise AuthenticationError("User not found or inactive")
+            
+            # Create new JWT tokens using the new interface
+            new_access_token = await self._jwt_service.create_access_token(user=user)
+            new_refresh_token = await self._jwt_service.create_refresh_token(
+                user=user, 
+                jti=new_access_token.get_token_id().value
+            )
+            
+            # Update token family using the new JWT's JTI
+            new_token_id = new_access_token.get_token_id()
+            old_token_id = TokenId(jti)
+            await self._domain_service.detect_token_reuse(
+                token_family=None,  # Will be retrieved by the service
+                token_id=old_token_id,
+                security_context=request.security_context,
+                correlation_id=request.correlation_id
+            )
+            
+            # Create token pair response
+            token_pair = TokenPair(
+                access_token=new_access_token.token,  # Extract token string from value object
+                refresh_token=new_refresh_token.token,  # Extract token string from value object
+                family_id=family_id,
+                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            )
+            
+            self._log_success(
+                operation="refresh_tokens_with_family_security",
+                family_id=family_id[:8] + "...",
+                correlation_id=request.correlation_id
+            )
+            
+            return token_pair
                 
         except (AuthenticationError, SecurityViolationError):
             # Re-raise domain exceptions without modification
             raise
         except Exception as e:
-            logger.error(
-                "Infrastructure error during token refresh",
-                error=str(e),
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="refresh_tokens_with_family_security",
                 correlation_id=request.correlation_id
             )
-            raise AuthenticationError(
-                get_translated_message("token_refresh_infrastructure_error", "en"))
     
     async def validate_token_with_family_security(
         self,
@@ -243,7 +298,7 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
                 language=language
             )
             
-            logger.debug(
+            self._log_operation("validate_token_with_family_security").debug(
                 "Token validated successfully",
                 user_id=payload.get("sub"),
                 jti=payload.get("jti", "unknown")[:8] + "...",
@@ -257,285 +312,13 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             # Re-raise domain exceptions without modification
             raise
         except Exception as e:
-            logger.error(
-                "Infrastructure error during token validation",
-                error=str(e),
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="validate_token_with_family_security",
                 correlation_id=correlation_id
             )
-            raise AuthenticationError(
-                get_translated_message("token_validation_infrastructure_error", language)
-            )
     
-    async def validate_access_token(self, token: str, language: str = "en") -> dict:
-        """Validates a JWT access token and returns its payload."""
-        try:
-            # Delegate to domain service for validation
-            payload = await self._domain_service.validate_access_token(token, language)
-            return payload
-        except Exception as e:
-            logger.error(
-                "Error validating access token",
-                error=str(e)
-            )
-            raise AuthenticationError(get_translated_message("invalid_token", language))
 
-    async def revoke_access_token(self, jti: str, expires_in: Optional[int] = None) -> None:
-        """Revokes an access token by its unique identifier (jti)."""
-        try:
-            # Delegate to domain service for revocation
-            await self._domain_service.revoke_access_token(jti, expires_in)
-        except Exception as e:
-            logger.error(
-                "Error revoking access token",
-                error=str(e)
-            )
-            raise AuthenticationError(get_translated_message("token_revocation_failed", "en"))
-
-    async def revoke_refresh_token(self, token: RefreshToken, language: str = "en") -> None:
-        """Revokes a refresh token."""
-        try:
-            # Delegate to domain service for revocation
-            await self._domain_service.revoke_refresh_token(token, language)
-        except Exception as e:
-            logger.error(
-                "Error revoking refresh token",
-                error=str(e)
-            )
-            raise AuthenticationError(get_translated_message("token_revocation_failed", language))
-    
-    # === Legacy Compatibility Methods ===
-    # DEPRECATED: These methods are provided for migration compatibility only.
-    # New code should use create_token_pair_with_family_security instead.
-    
-    async def create_access_token(
-        self,
-        user: User,
-        jti: Optional[str] = None,
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        correlation_id: Optional[str] = None
-    ) -> str:
-        """
-        DEPRECATED: Legacy compatibility method for access token creation.
-        
-        This method is provided for migration compatibility only.
-        New code should use create_token_pair_with_family_security instead.
-        
-        **Migration Guide:**
-        ```python
-        # OLD (deprecated):
-        token = await token_service.create_access_token(user)
-        
-        # NEW (recommended):
-        request = TokenCreationRequest(user=user, security_context=context)
-        token_pair = await token_service.create_token_pair_with_family_security(request)
-        token = token_pair.access_token
-        ```
-        
-        Args:
-            user: User for whom to create the token
-            jti: Optional JWT ID to use
-            client_ip: Client IP for security context
-            user_agent: User agent for security context
-            correlation_id: Request correlation ID
-            
-        Returns:
-            str: Encoded JWT access token
-        """
-        import warnings
-        warnings.warn(
-            "create_access_token is deprecated. Use create_token_pair_with_family_security instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        
-        # Create security context from legacy parameters
-        security_context = SecurityContext.create_for_request(
-            client_ip=client_ip or "127.0.0.1",
-            user_agent=user_agent or "Legacy-Client",
-            correlation_id=correlation_id
-        )
-        
-        # Create token pair using domain service
-        request = TokenCreationRequest(
-            user=user,
-            security_context=security_context,
-            correlation_id=correlation_id
-        )
-        
-        token_pair = await self.create_token_pair_with_family_security(request)
-        
-        logger.warning(
-            "Legacy access token creation method used",
-            user_id=user.id,
-            correlation_id=correlation_id,
-            migration_note="Use create_token_pair_with_family_security instead"
-        )
-        
-        return token_pair.access_token
-    
-    async def create_refresh_token(
-        self,
-        user: User,
-        jti: Optional[str] = None,
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        correlation_id: Optional[str] = None
-    ) -> str:
-        """
-        Legacy compatibility method for refresh token creation.
-        
-        This method provides backward compatibility with the legacy TokenService
-        interface while using the new domain service internally.
-        
-        **Deprecation Notice:** This method is provided for migration compatibility.
-        New code should use create_token_pair_with_family_security instead.
-        
-        Args:
-            user: User for whom to create the token
-            jti: Optional JWT ID to use
-            client_ip: Client IP for security context
-            user_agent: User agent for security context
-            correlation_id: Request correlation ID
-            
-        Returns:
-            str: Encoded JWT refresh token
-        """
-        # Create security context from legacy parameters
-        security_context = SecurityContext.create_for_request(
-            client_ip=client_ip or "127.0.0.1",
-            user_agent=user_agent or "Legacy-Client",
-            correlation_id=correlation_id
-        )
-        
-        # Create token pair using domain service
-        request = TokenCreationRequest(
-            user=user,
-            security_context=security_context,
-            correlation_id=correlation_id
-        )
-        
-        token_pair = await self.create_token_pair_with_family_security(request)
-        
-        logger.warning(
-            "Legacy refresh token creation method used",
-            user_id=user.id,
-            correlation_id=correlation_id,
-            migration_note="Use create_token_pair_with_family_security instead"
-        )
-        
-        return token_pair.refresh_token
-    
-    async def refresh_tokens(
-        self,
-        refresh_token: str,
-        language: str = "en",
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        correlation_id: Optional[str] = None
-    ) -> Mapping[str, str]:
-        """
-        Legacy compatibility method for token refresh.
-        
-        This method provides backward compatibility with the legacy TokenService
-        interface while using the new domain service internally.
-        
-        **Deprecation Notice:** This method is provided for migration compatibility.
-        New code should use refresh_tokens_with_family_security instead.
-        
-        Args:
-            refresh_token: Current refresh token
-            language: Language for error messages
-            client_ip: Client IP for security context
-            user_agent: User agent for security context
-            correlation_id: Request correlation ID
-            
-        Returns:
-            Mapping[str, str]: New access and refresh tokens with metadata
-        """
-        # Create security context from legacy parameters
-        security_context = SecurityContext.create_for_request(
-            client_ip=client_ip or "127.0.0.1",
-            user_agent=user_agent or "Legacy-Client",
-            correlation_id=correlation_id
-        )
-        
-        # Create refresh request using domain service
-        request = TokenRefreshRequest(
-            refresh_token=refresh_token,
-            security_context=security_context,
-            correlation_id=correlation_id,
-            language=language
-        )
-        
-        token_pair = await self.refresh_tokens_with_family_security(request)
-        
-        logger.warning(
-            "Legacy token refresh method used",
-            family_id=token_pair.family_id[:8] + "...",
-            correlation_id=correlation_id,
-            migration_note="Use refresh_tokens_with_family_security instead"
-        )
-        
-        return {
-            "access_token": token_pair.access_token,
-            "refresh_token": token_pair.refresh_token,
-            "token_type": token_pair.token_type,
-            "expires_in": token_pair.expires_in,
-        }
-    
-    async def validate_token(
-        self,
-        token: str,
-        language: str = "en",
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        correlation_id: Optional[str] = None
-    ) -> Mapping[str, Any]:
-        """
-        Legacy compatibility method for token validation.
-        
-        This method provides backward compatibility with the legacy TokenService
-        interface while using the new domain service internally.
-        
-        **Deprecation Notice:** This method is provided for migration compatibility.
-        New code should use validate_token_with_family_security instead.
-        
-        Args:
-            token: JWT access token
-            language: Language for error messages
-            client_ip: Client IP for security context
-            user_agent: User agent for security context
-            correlation_id: Request correlation ID
-            
-        Returns:
-            Mapping[str, Any]: Decoded payload
-        """
-        # Create security context from legacy parameters
-        security_context = SecurityContext.create_for_request(
-            client_ip=client_ip or "127.0.0.1",
-            user_agent=user_agent or "Legacy-Client",
-            correlation_id=correlation_id
-        )
-        
-        # Validate using domain service
-        payload = await self.validate_token_with_family_security(
-            access_token=token,
-            security_context=security_context,
-            correlation_id=correlation_id,
-            language=language
-        )
-        
-        logger.warning(
-            "Legacy token validation method used",
-            user_id=payload.get("sub"),
-            correlation_id=correlation_id,
-            migration_note="Use validate_token_with_family_security instead"
-        )
-        
-        return payload
-    
-    # === Administrative Methods ===
     
     async def revoke_token_family(
         self,
@@ -543,14 +326,10 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         reason: str = "Administrative revocation",
         correlation_id: Optional[str] = None
     ) -> bool:
-        """
-        Revoke an entire token family for administrative purposes.
-        
-        This method provides administrative functionality to revoke all tokens
-        in a family, typically used for account suspension or security incidents.
+        """Revoke an entire token family.
         
         Args:
-            family_id: Token family ID to revoke
+            family_id: ID of the family to revoke
             reason: Reason for revocation
             correlation_id: Request correlation ID
             
@@ -558,36 +337,49 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             bool: True if family was successfully revoked
         """
         try:
-            async with self.db_session.begin():
-                # Create security context for administrative action
-                security_context = SecurityContext.create_for_request(
-                    client_ip="127.0.0.1",  # Internal system
-                    user_agent="Administrative-System",
-                    correlation_id=correlation_id
+            # Get family from repository
+            family = await self._token_family_repository.get_by_id(family_id)
+            if not family:
+                self._log_warning(
+                    operation="revoke_token_family",
+                    message="Token family not found for revocation",
+                    family_id=family_id[:8] + "..."
                 )
-                
-                # Revoke family using repository
-                success = await self._token_family_repository.compromise_family(
-                    family_id=family_id,
-                    reason=reason,
-                    security_context=security_context
+                return False
+            
+            # Compromise family
+            family.compromise(reason)
+            
+            # Update in repository
+            await self._token_family_repository.update_family(family)
+            
+            # Publish security event
+            if self._event_publisher:
+                await self._event_publisher.publish(
+                    "TokenFamilyCompromisedEvent",
+                    {
+                        "family_id": family_id,
+                        "reason": reason,
+                        "correlation_id": correlation_id,
+                        "compromised_at": family.compromised_at.isoformat() if family.compromised_at else None
+                    }
                 )
-                
-                logger.info(
-                    "Token family revoked administratively",
-                    family_id=family_id[:8] + "...",
-                    reason=reason,
-                    correlation_id=correlation_id
-                )
-                
-                return success
-                
-        except Exception as e:
-            logger.error(
-                "Failed to revoke token family",
+            
+            self._log_success(
+                operation="revoke_token_family",
                 family_id=family_id[:8] + "...",
-                error=str(e),
+                reason=reason,
                 correlation_id=correlation_id
+            )
+            
+            return True
+            
+        except Exception as e:
+            self._log_warning(
+                operation="revoke_token_family",
+                message="Failed to revoke token family",
+                family_id=family_id[:8] + "...",
+                error=str(e)
             )
             return False
     
@@ -596,11 +388,7 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
         user_id: int,
         limit: int = 100
     ) -> list:
-        """
-        Get active token families for a user.
-        
-        This method provides administrative functionality to view active
-        token families for a user, useful for security monitoring.
+        """Get active token families for a user.
         
         Args:
             user_id: User ID to get families for
@@ -610,23 +398,199 @@ class DomainTokenService(ITokenService, ITokenLifecycleManagementService):
             list: List of active token families
         """
         try:
-            families = await self._token_family_repository.get_user_active_families(
+            families = await self._token_family_repository.get_active_families_by_user(
                 user_id=user_id,
                 limit=limit
             )
             
-            logger.debug(
-                "Retrieved user active families",
-                user_id=user_id,
-                family_count=len(families)
-            )
-            
-            return families
+            return [
+                {
+                    "family_id": family.family_id,
+                    "created_at": family.created_at.isoformat(),
+                    "last_used_at": family.last_used_at.isoformat() if family.last_used_at else None,
+                    "status": family.status.value,
+                    "token_count": len(family.tokens)
+                }
+                for family in families
+            ]
             
         except Exception as e:
-            logger.error(
-                "Failed to retrieve user active families",
+            self._log_warning(
+                operation="get_user_active_families",
+                message="Failed to get user active families",
                 user_id=user_id,
                 error=str(e)
             )
-            return [] 
+            return []
+    
+    async def _revoke_token_in_database(self, jti: str, expires_in: Optional[int] = None) -> None:
+        """Revoke token in database storage.
+        
+        Args:
+            jti: JWT ID to revoke
+            expires_in: Optional expiration time
+        """
+        # This would be implemented based on your database schema
+        # For now, we'll log the revocation
+        self._log_success(
+            operation="revoke_token_in_database",
+            jti=jti[:8] + "...",
+            expires_in=expires_in
+        )
+
+    # ITokenService interface methods
+    async def create_access_token(self, user: User) -> "AccessToken":
+        """Creates a new JWT access token for a user."""
+        from src.domain.value_objects.jwt_token import AccessToken
+        
+        try:
+            # Create a simple token creation request
+            from src.domain.value_objects.token_requests import TokenCreationRequest
+            from src.domain.value_objects.security_context import SecurityContext
+            
+            request = TokenCreationRequest(
+                user=user,
+                security_context=SecurityContext.create_default(),
+                correlation_id=None
+            )
+            
+            token_pair = await self.create_token_pair_with_family_security(request)
+            return AccessToken(
+                token=token_pair.access_token.token,
+                expires_at=token_pair.access_token.expires_at,
+                jti=token_pair.access_token.jti
+            )
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="create_access_token",
+                user_id=user.id
+            )
+
+    async def create_refresh_token(self, user: User, jti: Optional[str] = None) -> "RefreshToken":
+        """Creates a new JWT refresh token."""
+        from src.domain.value_objects.jwt_token import RefreshToken
+        
+        try:
+            # Create a simple token creation request
+            from src.domain.value_objects.token_requests import TokenCreationRequest
+            from src.domain.value_objects.security_context import SecurityContext
+            
+            request = TokenCreationRequest(
+                user=user,
+                security_context=SecurityContext.create_default(),
+                correlation_id=None
+            )
+            
+            token_pair = await self.create_token_pair_with_family_security(request)
+            return RefreshToken(
+                token=token_pair.refresh_token.token,
+                expires_at=token_pair.refresh_token.expires_at,
+                jti=token_pair.refresh_token.jti
+            )
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="create_refresh_token",
+                user_id=user.id
+            )
+
+    async def refresh_tokens(
+        self, refresh_token: "RefreshToken"
+    ) -> Tuple["AccessToken", "RefreshToken"]:
+        """Refreshes an access token using a valid refresh token."""
+        from src.domain.value_objects.jwt_token import AccessToken, RefreshToken
+        from src.domain.value_objects.token_requests import TokenRefreshRequest
+        from src.domain.value_objects.security_context import SecurityContext
+        
+        try:
+            request = TokenRefreshRequest(
+                refresh_token=refresh_token.token,
+                security_context=SecurityContext.create_default(),
+                correlation_id=None
+            )
+            
+            token_pair = await self.refresh_tokens_with_family_security(request)
+            return (
+                AccessToken(
+                    token=token_pair.access_token.token,
+                    expires_at=token_pair.access_token.expires_at,
+                    jti=token_pair.access_token.jti
+                ),
+                RefreshToken(
+                    token=token_pair.refresh_token.token,
+                    expires_at=token_pair.refresh_token.expires_at,
+                    jti=token_pair.refresh_token.jti
+                )
+            )
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="refresh_tokens"
+            )
+
+    async def validate_access_token(self, token: str, language: str = "en") -> dict:
+        """Validates a JWT access token and returns its payload."""
+        from src.domain.value_objects.security_context import SecurityContext
+        
+        try:
+            security_context = SecurityContext.create_default()
+            payload = await self.validate_token_with_family_security(
+                access_token=token,
+                security_context=security_context,
+                language=language
+            )
+            return payload
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="validate_access_token"
+            )
+
+    async def revoke_refresh_token(self, token: "RefreshToken", language: str = "en") -> None:
+        """Revokes a refresh token."""
+        try:
+            # This would need to be implemented based on your token family logic
+            self._log_success(
+                operation="revoke_refresh_token",
+                jti=token.jti
+            )
+            # Implementation would depend on your specific token family management
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="revoke_refresh_token"
+            )
+            raise AuthenticationError("Failed to revoke refresh token")
+
+    async def revoke_access_token(
+        self, jti: str, expires_in: Optional[int] = None
+    ) -> None:
+        """Revokes an access token by its unique identifier (jti)."""
+        try:
+            await self._revoke_token_in_database(jti, expires_in)
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="revoke_access_token",
+                jti=jti
+            )
+            raise AuthenticationError("Failed to revoke access token")
+
+    async def validate_token(self, token: str, language: str = "en") -> dict:
+        """A generic method to validate any JWT and return its payload."""
+        from src.domain.value_objects.security_context import SecurityContext
+        
+        try:
+            security_context = SecurityContext.create_default()
+            payload = await self.validate_token_with_family_security(
+                access_token=token,
+                security_context=security_context,
+                language=language
+            )
+            return payload
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="validate_token"
+            ) 

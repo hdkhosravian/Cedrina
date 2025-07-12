@@ -40,12 +40,23 @@ async def test_login_wrong_password(async_client):
 
 
 @pytest.mark.asyncio
-async def test_login_nonexistent_user(async_client):
+async def test_login_nonexistent_user_401_scenario(async_client):
+    """Test login with nonexistent user that returns 401"""
     login_resp = await async_client.post(
         "/api/v1/auth/login",
         json={"username": "nouser", "password": "AnyPass123!"},
     )
-    assert login_resp.status_code in {401, 422}
+    assert login_resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_nonexistent_user_422_scenario(async_client):
+    """Test login with nonexistent user that returns 422"""
+    login_resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"username": "nouser", "password": "AnyPass123!"},
+    )
+    assert login_resp.status_code == 422
 
 
 @pytest.mark.asyncio

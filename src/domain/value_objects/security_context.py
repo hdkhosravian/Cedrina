@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 import re
 
-from src.core.exceptions import ValidationError
+from src.common.exceptions import ValidationError
 
 
 @dataclass(frozen=True)

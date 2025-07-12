@@ -13,7 +13,8 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
     get_error_classification_service,
 )
 from src.adapters.api.v1.auth.schemas import MessageResponse
-from src.core.exceptions import AuthenticationError, UserNotFoundError
+from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
+from src.common.exceptions import AuthenticationError, UserNotFoundError
 from src.domain.interfaces import (
     IErrorClassificationService
 )
@@ -22,7 +23,7 @@ from src.domain.security.logging_service import secure_logging_service
 from src.domain.services.email_confirmation.email_confirmation_service import (
     EmailConfirmationService,
 )
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -47,20 +48,9 @@ async def confirm_email(
     Validates token, activates user account, and marks email as confirmed.
     Token can only be used once.
     """
-    # Generate correlation ID for request tracking
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="confirm_email",
-        operation="email_confirmation"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "confirm_email", "email_confirmation"
     )
     
     request_logger.info(
@@ -71,7 +61,7 @@ async def confirm_email(
     
     try:
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
         # Delegate to domain service for token validation, account activation, and token invalidation
         user = await confirmation_service.confirm_email(token, language)
@@ -88,43 +78,16 @@ async def confirm_email(
         success_message = get_translated_message("email_confirmed_success", language)
         return MessageResponse(message=success_message)
 
-    except (ValueError, UserNotFoundError, AuthenticationError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Classify error for consistent response format
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Log the error with security context
-        request_logger.warning(
-            "Email confirmation failed",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
-            token_masked=secure_logging_service.mask_token(token),
-            security_enhanced=True
-        )
-        
-        # Re-raise for FastAPI exception handlers
-        raise classified_error
-        
     except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Log unexpected errors for debugging
-        request_logger.error(
-            "Email confirmation failed - unexpected error",
-            error=str(e),
-            error_type=type(e).__name__,
-            token_masked=secure_logging_service.mask_token(token),
-            security_enhanced=True
-        )
-        
-        # Create standardized error response
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+        # Handle authentication errors consistently
+        context_info = {
+            "token_masked": secure_logging_service.mask_token(token)
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
+            context_info=context_info
         )
-        raise AuthenticationError(message=standardized_response["detail"])

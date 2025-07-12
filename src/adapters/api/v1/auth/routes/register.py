@@ -16,23 +16,21 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
     get_error_classification_service,
 )
 from src.adapters.api.v1.auth.schemas import AuthResponse, RegisterRequest, UserOut
-from src.adapters.api.v1.auth.utils import create_token_pair
-from src.core.exceptions import (
-    AuthenticationError,
-    DuplicateUserError,
-    PasswordPolicyError,
+from src.adapters.api.v1.auth.utils import (
+    create_token_pair, 
+    handle_authentication_error, 
+    setup_request_context
 )
 from src.domain.interfaces import (
     ITokenService, 
     IUserRegistrationService,
     IErrorClassificationService
 )
-from src.domain.security.error_standardization import error_standardization_service
 from src.domain.security.logging_service import secure_logging_service
 from src.domain.value_objects.email import Email
 from src.domain.value_objects.password import Password
 from src.domain.value_objects.username import Username
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -58,20 +56,9 @@ async def register_user(
     Creates user account, sends confirmation email, and returns JWT tokens.
     Implements comprehensive security logging and error handling.
     """
-    # Generate correlation ID for request tracking
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="register",
-        operation="user_registration"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "register", "user_registration"
     )
     
     request_logger.info(
@@ -89,7 +76,7 @@ async def register_user(
         password = Password(payload.password)
         
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
         request_logger.debug(
             "Domain value objects created",
@@ -118,7 +105,7 @@ async def register_user(
         )
         
         # Generate JWT tokens for authenticated session using utility function
-        tokens = await create_token_pair(token_service, user)
+        tokens = await create_token_pair(token_service, user, correlation_id)
         
         request_logger.info(
             "Registration tokens created",
@@ -134,45 +121,17 @@ async def register_user(
             user=UserOut.from_entity(user)
         )
         
-    except (ValueError, AuthenticationError, DuplicateUserError, PasswordPolicyError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Classify error for consistent response format
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Log the error with security context
-        request_logger.warning(
-            "Registration failed",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
-            username_masked=secure_logging_service.mask_username(payload.username),
-            email_masked=secure_logging_service.mask_email(payload.email),
-            security_enhanced=True
-        )
-        
-        # Re-raise for FastAPI exception handlers
-        raise classified_error
-        
     except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Log unexpected errors for debugging
-        request_logger.error(
-            "Registration failed - unexpected error",
-            error=str(e),
-            error_type=type(e).__name__,
-            username_masked=secure_logging_service.mask_username(payload.username),
-            email_masked=secure_logging_service.mask_email(payload.email),
-            security_enhanced=True
-        )
-        
-        # Create standardized error response
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+        # Handle authentication errors consistently
+        context_info = {
+            "username_masked": secure_logging_service.mask_username(payload.username),
+            "email_masked": secure_logging_service.mask_email(payload.email)
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
+            context_info=context_info
         )
-        raise AuthenticationError(message=standardized_response["detail"])

@@ -140,14 +140,14 @@ class TestVerifyAgainstHashIntegration:
     @pytest.mark.asyncio
     async def test_verify_against_hash_method_integration_with_services(self):
         """Test that the verify_against_hash method integrates correctly with domain services."""
-        from src.domain.services.authentication.user_authentication_service import UserAuthenticationService
+        from src.domain.services.authentication.unified_authentication_service import UnifiedAuthenticationService
         from src.domain.entities.user import User, Role
         from unittest.mock import AsyncMock
         
         # Arrange
         mock_user_repo = AsyncMock()
         mock_event_publisher = AsyncMock()
-        auth_service = UserAuthenticationService(mock_user_repo, mock_event_publisher)
+        auth_service = UnifiedAuthenticationService(mock_user_repo, event_publisher=mock_event_publisher)
         
         # Create test user with unique data to avoid conflicts
         unique = uuid.uuid4().hex[:8]
@@ -167,12 +167,12 @@ class TestVerifyAgainstHashIntegration:
         # Test direct integration with the domain service
         # This tests that our verify_against_hash method is actually being used
         result = await auth_service.verify_password(user, password_obj)
-        assert result is True, "UserAuthenticationService should use verify_against_hash correctly"
+        assert result is True, "UnifiedAuthenticationService should use verify_against_hash correctly"
         
         # Test with wrong password
         wrong_password_obj = Password("WrongP@ssw0rd795!")
         wrong_result = await auth_service.verify_password(user, wrong_password_obj)
-        assert wrong_result is False, "UserAuthenticationService should reject wrong password"
+        assert wrong_result is False, "UnifiedAuthenticationService should reject wrong password"
 
     def test_verify_against_hash_unicode_and_special_characters(self):
         """Test verify_against_hash with unicode and special characters."""

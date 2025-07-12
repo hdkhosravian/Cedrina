@@ -44,18 +44,14 @@ from src.domain.interfaces import (
     IEmailConfirmationEmailService,
     IEmailConfirmationRequestService,
     IEmailConfirmationService,
-    IUserRegistrationService,
     IErrorClassificationService,
     IPasswordEncryptionService,
 )
-from src.domain.interfaces.authentication.token_validation import IEnhancedTokenValidationService
+
 from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
-from src.domain.services.authentication.oauth_service import OAuthAuthenticationService
+
 from src.domain.services.authentication.password_change_service import (
     PasswordChangeService,
-)
-from src.domain.services.authentication.user_authentication_security_service import (
-    UserAuthenticationSecurityService,
 )
 from src.domain.services.authentication.user_logout_service import (
     UserLogoutService,
@@ -98,13 +94,10 @@ from src.domain.services.email_confirmation.email_confirmation_service import (
 from src.domain.services.authentication import (
     ErrorClassificationService,
 )
-from src.domain.services.authentication.enhanced_token_validation_service import (
-    EnhancedTokenValidationService,
-)
-from src.infrastructure.services.authentication import (
-    PasswordEncryptionService,
-)
+
+from src.infrastructure.services.authentication.password_encryption import PasswordEncryptionService
 from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
+from src.domain.services.authentication.unified_authentication_service import UnifiedAuthenticationService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ---------------------------------------------------------------------------
@@ -198,6 +191,7 @@ def get_event_publisher() -> IEventPublisher:
 
 def get_token_service(
     db: AsyncDB,
+    user_repository: IUserRepository = Depends(get_user_repository),
 ) -> ITokenService:
     """Factory that returns domain-driven token service implementation.
     
@@ -207,6 +201,7 @@ def get_token_service(
     
     Args:
         db: Database session dependency for unified storage
+        user_repository: User repository dependency for user lookups
         
     Returns:
         ITokenService: Domain-driven token service implementation
@@ -221,7 +216,10 @@ def get_token_service(
         - Encrypted token data for enhanced security
     """
     # Create domain token service with database-only approach
-    return DomainTokenService(db_session=db)
+    return DomainTokenService(
+        db_session=db,
+        user_repository=user_repository
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -229,34 +227,48 @@ def get_token_service(
 # ---------------------------------------------------------------------------
 
 
-def get_user_authentication_service(
+def get_unified_authentication_service(
     user_repository: IUserRepository = Depends(get_user_repository),
+    oauth_profile_repository: IOAuthProfileRepository = Depends(get_oauth_profile_repository),
     event_publisher: IEventPublisher = Depends(get_event_publisher),
-) -> IUserAuthenticationService:
-    """Factory that returns enhanced user authentication service with security logging.
+) -> UnifiedAuthenticationService:
+    """Get unified authentication service with comprehensive security features.
     
-    This factory creates the enhanced domain authentication service with its
-    dependencies, following dependency injection principles. The enhanced service
-    includes comprehensive security logging, error standardization, and information
-    disclosure prevention.
+    This service consolidates all authentication functionality including:
+    - User authentication with security logging
+    - OAuth integration with provider management
+    - Token lifecycle management with family security
+    - Advanced threat detection and response
+    - Zero-trust security principles
+    - Performance optimization for high-throughput systems
     
     Args:
-        user_repository: User repository dependency for data access
-        event_publisher: Event publisher dependency for domain events
+        user_repository: User repository dependency
+        oauth_profile_repository: OAuth profile repository dependency
+        event_publisher: Event publisher dependency
         
     Returns:
-        IUserAuthenticationService: Enhanced authentication service with security features
-        
-    Note:
-        The enhanced authentication service implements enterprise-grade security:
-        - Zero-trust data masking for audit trails
-        - Consistent error responses to prevent enumeration
-        - Standardized timing to prevent timing attacks
-        - Comprehensive security event logging
-        - Risk-based authentication analysis
+        UnifiedAuthenticationService: Unified authentication service
     """
-    return UserAuthenticationSecurityService(
+    return UnifiedAuthenticationService(
         user_repository=user_repository,
+        oauth_profile_repository=oauth_profile_repository,
+        event_publisher=event_publisher
+    )
+
+def get_user_authentication_service(
+    user_repository: IUserRepository = Depends(get_user_repository),
+    oauth_profile_repository: IOAuthProfileRepository = Depends(get_oauth_profile_repository),
+    event_publisher: IEventPublisher = Depends(get_event_publisher),
+) -> IUserAuthenticationService:
+    """Get user authentication service (now uses unified service).
+    
+    Returns:
+        IUserAuthenticationService: User authentication service
+    """
+    return get_unified_authentication_service(
+        user_repository=user_repository,
+        oauth_profile_repository=oauth_profile_repository,
         event_publisher=event_publisher,
     )
 
@@ -304,36 +316,7 @@ def get_user_registration_service(
     )
 
 
-def get_oauth_service(
-    user_repository: IUserRepository = Depends(get_user_repository),
-    oauth_profile_repository: IOAuthProfileRepository = Depends(get_oauth_profile_repository),
-    event_publisher: IEventPublisher = Depends(get_event_publisher),
-) -> IOAuthService:
-    """Factory that returns OAuth authentication service.
-    
-    This factory creates the OAuth authentication service with its
-    dependencies, following dependency injection principles.
-    
-    Args:
-        user_repository: User repository dependency for data access
-        oauth_profile_repository: OAuth profile repository dependency
-        event_publisher: Event publisher dependency for domain events
-        
-    Returns:
-        IOAuthService: OAuth authentication service
-        
-    Note:
-        The OAuth service provides secure integration with external providers:
-        - Google, Microsoft, and Facebook OAuth support
-        - Secure token exchange and validation
-        - Profile synchronization and management
-        - Comprehensive audit logging
-    """
-    return OAuthAuthenticationService(
-        user_repository=user_repository,
-        oauth_profile_repository=oauth_profile_repository,
-        event_publisher=event_publisher,
-    )
+
 
 
 def get_user_logout_service(
@@ -585,33 +568,8 @@ def get_session_service(
     )
 
 
-def get_enhanced_token_validation_service(
-    db: AsyncDB,
-) -> IEnhancedTokenValidationService:
-    """Factory that returns enhanced token validation service with advanced security.
-    
-    This factory creates the enhanced token validation service with comprehensive
-    security features for token pairing validation and threat detection.
-    
-    Args:
-        db: Database session dependency for unified storage
-        
-    Returns:
-        IEnhancedTokenValidationService: Enhanced token validation service
-        
-    Note:
-        The enhanced validation service provides:
-        - Token pairing validation (access + refresh must have same JTI)
-        - Cross-user attack prevention
-        - Session consistency validation
-        - Security threat detection and classification
-        - Performance metrics and monitoring
-        - Database-only approach for improved consistency
-    """
-    # Note: Enhanced token validation now uses the unified domain token service
-    # which includes all necessary session management capabilities
-    token_service = DomainTokenService(db_session=db)
-    return EnhancedTokenValidationService(token_service=token_service)
+
+
 
 
 # Type aliases for dependency injection
@@ -619,8 +577,8 @@ UserAuthenticationServiceDep = Annotated[IUserAuthenticationService, Depends(get
 UserRegistrationServiceDep = Annotated[IUserRegistrationService, Depends(get_user_registration_service)]
 UserLogoutServiceDep = Annotated[IUserLogoutService, Depends(get_user_logout_service)]
 PasswordChangeServiceDep = Annotated[IPasswordChangeService, Depends(get_password_change_service)]
-OAuthServiceDep = Annotated[IOAuthService, Depends(get_oauth_service)]
+
 TokenServiceDep = Annotated[ITokenService, Depends(get_token_service)]
 ErrorClassificationServiceDep = Annotated[IErrorClassificationService, Depends(get_error_classification_service)]
 PasswordEncryptionServiceDep = Annotated[IPasswordEncryptionService, Depends(get_password_encryption_service)]
-EnhancedTokenValidationServiceDep = Annotated[IEnhancedTokenValidationService, Depends(get_enhanced_token_validation_service)]
+

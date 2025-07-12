@@ -23,15 +23,15 @@ from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
+import structlog
 
 from src.domain.entities.user import User
 from src.domain.interfaces.repositories import IUserRepository
 from src.domain.value_objects.email import Email
 from src.domain.value_objects.username import Username
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class UserRepository(IUserRepository):
@@ -463,7 +463,7 @@ class UserRepository(IUserRepository):
                     error_type="duplicate_user_error",
                     operation="save_failed",
                 )
-                from src.core.exceptions import DuplicateUserError
+                from src.common.exceptions import DuplicateUserError
                 raise DuplicateUserError("User with this username or email already exists")
             
             logger.error(

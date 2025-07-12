@@ -1,7 +1,7 @@
 import pytest
 from fastapi import status
 from httpx import AsyncClient
-from src.core.exceptions import UserNotFoundError
+from src.common.exceptions import UserNotFoundError
 
 
 @pytest.mark.asyncio

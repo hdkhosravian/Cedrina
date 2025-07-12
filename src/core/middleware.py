@@ -11,7 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from src.core.config.settings import settings
 from src.core.rate_limiting.ratelimiter import get_limiter
-from src.utils.i18n import get_request_language
+from src.common.i18n import extract_language_from_request
 
 
 def configure_middleware(app: FastAPI) -> None:
@@ -55,7 +55,8 @@ async def set_language_middleware(request: Request, call_next):
     Returns:
         Response: The response with language headers
     """
-    lang = get_request_language(request)
+    # Extract language from request for I18N
+    lang = extract_language_from_request(request)
     i18n.set("locale", lang)
     request.state.language = lang
     response = await call_next(request)

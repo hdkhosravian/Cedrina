@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette import status
 from structlog import get_logger
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     AuthenticationError,
     CedrinaError,
     DatabaseError,
@@ -30,7 +30,7 @@ from src.core.exceptions import (
     UserNotFoundError,
     ValidationError,
 )
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 __all__ = [
     "authentication_error_handler",
@@ -220,7 +220,8 @@ async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded)
         A JSONResponse with status code 429.
 
     """
-    locale = get_request_language(request)
+    # Extract language from request for I18N
+    locale = extract_language_from_request(request)
     # The limit object has a 'limit' attribute which is a 'Limit' object.
     # The string representation of the 'Limit' object is the limit string (e.g. "10/minute").
     limit_scope = exc.limit.scope or "default"
@@ -250,7 +251,7 @@ async def rate_limit_exceeded_error_handler(request: Request, exc: RateLimitExce
     Returns:
         A `JSONResponse` with a 429 status code and error detail.
     """
-    locale = get_request_language(request)
+    locale = extract_language_from_request(request)
     logger.warning(
         "domain_rate_limit_exceeded",
         client_ip=request.client.host,

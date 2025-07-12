@@ -11,9 +11,9 @@ from typing import Any, Dict
 from jose import jwt
 
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError
 from src.domain.entities.user import Role, User
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 class SecurityTestHelpers:

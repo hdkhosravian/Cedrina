@@ -11,7 +11,7 @@ import re
 import pytest
 from pydantic import EmailStr
 
-from src.core.exceptions import PasswordResetError, RateLimitExceededError
+from src.common.exceptions import PasswordResetError, RateLimitExceededError
 from src.domain.entities.user import User
 from src.domain.events.password_reset_events import (
     PasswordResetRequestedEvent,

@@ -12,26 +12,25 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-import structlog
 
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError, SessionLimitExceededError
+from src.common.exceptions import AuthenticationError, SessionLimitExceededError
 from src.domain.entities.session import Session
-from src.domain.entities.token_family import TokenFamily, TokenFamilyStatus
+from src.domain.entities.token_family import TokenFamily
+from src.domain.value_objects.token_family_status import TokenFamilyStatus
 from src.domain.interfaces.repositories.token_family_repository import ITokenFamilyRepository
-from src.domain.interfaces import IEventPublisher
+from src.common.events import IEventPublisher
 from src.domain.events.authentication_events import (
     SessionCreatedEvent,
     SessionRevokedEvent,
     SessionExpiredEvent,
     SessionActivityUpdatedEvent
 )
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = structlog.get_logger(__name__)
 
-
-class UnifiedSessionService:
+class UnifiedSessionService(BaseInfrastructureService):
     """
     Unified session service with token family integration.
     
@@ -53,15 +52,15 @@ class UnifiedSessionService:
         token_family_repository: ITokenFamilyRepository,
         event_publisher: IEventPublisher
     ):
-        self.db_session = db_session
-        self._token_family_repository = token_family_repository
-        self._event_publisher = event_publisher
-        
-        logger.info(
-            "UnifiedSessionService initialized",
+        super().__init__(
+            service_name="UnifiedSessionService",
             storage_type="database_only",
             features=["token_family_integration", "activity_tracking", "audit_trail"]
         )
+        
+        self.db_session = db_session
+        self._token_family_repository = token_family_repository
+        self._event_publisher = event_publisher
     
     async def create_session(
         self,
@@ -103,39 +102,35 @@ class UnifiedSessionService:
         )
         
         try:
-            async with self.db_session.begin():
-                self.db_session.add(session)
-                await self.db_session.commit()
-                
-                # Publish session created event
-                event = SessionCreatedEvent.create(
-                    user_id=user_id,
-                    jti=jti,
-                    family_id=family_id,
-                    correlation_id=correlation_id
-                )
-                await self._event_publisher.publish(event)
-                
-                logger.info(
-                    "Session created successfully",
-                    user_id=user_id,
-                    jti=jti,
-                    family_id=family_id,
-                    correlation_id=correlation_id
-                )
-                
-                return session
-                
-        except Exception as e:
-            logger.error(
-                "Session creation failed",
+            # Add session to current transaction
+            self.db_session.add(session)
+            await self.db_session.flush()  # Flush to get any DB-generated fields
+            
+            # Publish session created event
+            event = SessionCreatedEvent.create(
+                session_id=jti,
                 user_id=user_id,
-                jti=jti,
-                error=str(e),
+                family_id=family_id,
                 correlation_id=correlation_id
             )
-            raise AuthenticationError(
-                get_translated_message("session_creation_failed", "en")
+            await self._event_publisher.publish(event)
+            
+            self._log_success(
+                operation="create_session",
+                user_id=user_id,
+                jti=jti,
+                family_id=family_id,
+                correlation_id=correlation_id
+            )
+            
+            return session
+                
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="create_session",
+                user_id=user_id,
+                correlation_id=correlation_id
             )
     
     async def update_session_activity(
@@ -160,21 +155,30 @@ class UnifiedSessionService:
             return False
         
         if session.revoked_at:
-            logger.debug("Session revoked", jti=jti, user_id=user_id)
+            self._log_operation("update_session_activity").debug(
+                "Session revoked", 
+                jti=jti, 
+                user_id=user_id
+            )
             return False
         
         current_time = datetime.now(timezone.utc)
         current_time_naive = current_time.replace(tzinfo=None)
         
         if session.expires_at.replace(tzinfo=None) < current_time_naive:
-            logger.debug("Session expired", jti=jti, user_id=user_id)
+            self._log_operation("update_session_activity").debug(
+                "Session expired", 
+                jti=jti, 
+                user_id=user_id
+            )
             await self._handle_session_expiration(session, correlation_id)
             return False
         
         inactivity_timeout = timedelta(minutes=settings.SESSION_INACTIVITY_TIMEOUT_MINUTES)
         if session.last_activity_at.replace(tzinfo=None) + inactivity_timeout < current_time_naive:
-            logger.info(
-                "Session expired due to inactivity",
+            self._log_warning(
+                operation="update_session_activity",
+                message="Session expired due to inactivity",
                 jti=jti,
                 user_id=user_id,
                 last_activity=session.last_activity_at.isoformat()
@@ -183,25 +187,26 @@ class UnifiedSessionService:
             return False
         
         try:
-            async with self.db_session.begin():
-                session.last_activity_at = current_time_naive
-                self.db_session.add(session)
-                await self.db_session.commit()
-                
-                # Publish activity update event
-                event = SessionActivityUpdatedEvent.create(
-                    user_id=user_id,
-                    jti=jti,
-                    family_id=session.family_id,
-                    correlation_id=correlation_id
-                )
-                await self._event_publisher.publish(event)
-                
-                return True
+            # Update session in current transaction
+            session.last_activity_at = current_time_naive
+            self.db_session.add(session)
+            await self.db_session.flush()  # Flush to persist the update
+            
+            # Publish activity update event
+            event = SessionActivityUpdatedEvent.create(
+                session_id=jti,
+                user_id=user_id,
+                family_id=session.family_id,
+                correlation_id=correlation_id
+            )
+            await self._event_publisher.publish(event)
+            
+            return True
                 
         except Exception as e:
-            logger.error(
-                "Session activity update failed",
+            self._log_warning(
+                operation="update_session_activity",
+                message="Session activity update failed",
                 jti=jti,
                 user_id=user_id,
                 error=str(e),
@@ -232,50 +237,46 @@ class UnifiedSessionService:
             return
         
         try:
-            async with self.db_session.begin():
-                session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                session.revoke_reason = reason
-                self.db_session.add(session)
-                
-                # If session has family_id, compromise the family
-                if session.family_id:
-                    await self._token_family_repository.compromise_family(
-                        family_id=session.family_id,
-                        reason=f"Session revoked: {reason}",
-                        correlation_id=correlation_id
-                    )
-                
-                await self.db_session.commit()
-                
-                # Publish session revoked event
-                event = SessionRevokedEvent.create(
-                    user_id=user_id,
-                    jti=jti,
+            # Update session in current transaction
+            session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.revoke_reason = reason
+            self.db_session.add(session)
+            
+            # If session has family_id, compromise the family
+            if session.family_id:
+                await self._token_family_repository.compromise_family(
                     family_id=session.family_id,
-                    reason=reason,
+                    reason=f"Session revoked: {reason}",
                     correlation_id=correlation_id
                 )
-                await self._event_publisher.publish(event)
-                
-                logger.info(
-                    "Session revoked successfully",
-                    jti=jti,
-                    user_id=user_id,
-                    family_id=session.family_id,
-                    reason=reason,
-                    correlation_id=correlation_id
-                )
-                
-        except Exception as e:
-            logger.error(
-                "Session revocation failed",
-                jti=jti,
+            
+            await self.db_session.flush()  # Flush to persist the updates
+            
+            # Publish session revoked event
+            event = SessionRevokedEvent.create(
+                session_id=jti,
                 user_id=user_id,
-                error=str(e),
+                family_id=session.family_id,
+                reason=reason,
                 correlation_id=correlation_id
             )
-            raise AuthenticationError(
-                get_translated_message("session_revocation_failed", language)
+            await self._event_publisher.publish(event)
+            
+            self._log_success(
+                operation="revoke_session",
+                jti=jti,
+                user_id=user_id,
+                family_id=session.family_id,
+                reason=reason,
+                correlation_id=correlation_id
+            )
+                
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="revoke_session",
+                user_id=user_id,
+                correlation_id=correlation_id
             )
     
     async def get_session(self, jti: str, user_id: int) -> Optional[Session]:
@@ -300,8 +301,9 @@ class UnifiedSessionService:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(
-                "Session retrieval failed",
+            self._log_warning(
+                operation="get_session",
+                message="Session retrieval failed",
                 jti=jti,
                 user_id=user_id,
                 error=str(e)
@@ -355,8 +357,9 @@ class UnifiedSessionService:
             )
             return result.scalars().all()
         except Exception as e:
-            logger.error(
-                "Failed to retrieve user active sessions",
+            self._log_warning(
+                operation="get_user_active_sessions",
+                message="Failed to retrieve user active sessions",
                 user_id=user_id,
                 error=str(e)
             )
@@ -395,16 +398,17 @@ class UnifiedSessionService:
             for session in expired_sessions:
                 await self._handle_session_expiration(session)
             
-            logger.info(
-                "Expired sessions cleaned up",
+            self._log_success(
+                operation="cleanup_expired_sessions",
                 count=len(expired_sessions)
             )
             
             return len(expired_sessions)
             
         except Exception as e:
-            logger.error(
-                "Session cleanup failed",
+            self._log_warning(
+                operation="cleanup_expired_sessions",
+                message="Session cleanup failed",
                 error=str(e)
             )
             return 0
@@ -432,8 +436,9 @@ class UnifiedSessionService:
             )
             return result.scalar() or 0
         except Exception as e:
-            logger.error(
-                "Failed to get active session count",
+            self._log_warning(
+                operation="get_active_session_count",
+                message="Failed to get active session count",
                 user_id=user_id,
                 error=str(e)
             )
@@ -446,24 +451,25 @@ class UnifiedSessionService:
     ) -> None:
         """Handle session expiration with event publishing."""
         try:
-            async with self.db_session.begin():
-                session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                session.revoke_reason = "Session expired"
-                self.db_session.add(session)
-                await self.db_session.commit()
-                
-                # Publish session expired event
-                event = SessionExpiredEvent.create(
-                    user_id=session.user_id,
-                    jti=session.jti,
-                    family_id=session.family_id,
-                    correlation_id=correlation_id
-                )
-                await self._event_publisher.publish(event)
-                
+            # Update session in current transaction
+            session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.revoke_reason = "Session expired"
+            self.db_session.add(session)
+            await self.db_session.flush()  # Flush to persist the update
+            
+            # Publish session expired event
+            event = SessionExpiredEvent.create(
+                user_id=session.user_id,
+                jti=session.jti,
+                family_id=session.family_id,
+                correlation_id=correlation_id
+            )
+            await self._event_publisher.publish(event)
+            
         except Exception as e:
-            logger.error(
-                "Failed to handle session expiration",
+            self._log_warning(
+                operation="handle_session_expiration",
+                message="Failed to handle session expiration",
                 jti=session.jti,
                 user_id=session.user_id,
                 error=str(e)

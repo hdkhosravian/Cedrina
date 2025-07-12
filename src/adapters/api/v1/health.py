@@ -10,7 +10,7 @@ from src.core.config.settings import settings
 from src.core.dependencies.auth import get_current_admin_user
 from src.core.logging import logger
 from src.infrastructure.database.database import check_database_health
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 router = APIRouter()
 

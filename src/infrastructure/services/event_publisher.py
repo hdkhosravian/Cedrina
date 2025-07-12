@@ -7,15 +7,12 @@ enabling the domain layer to publish events without coupling to infrastructure c
 import asyncio
 from typing import List, Optional, Set
 
-import structlog
-
 from src.domain.events.password_reset_events import BaseDomainEvent
-from src.domain.interfaces import IEventPublisher
+from src.common.events import IEventPublisher
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = structlog.get_logger(__name__)
 
-
-class InMemoryEventPublisher(IEventPublisher):
+class InMemoryEventPublisher(IEventPublisher, BaseInfrastructureService):
     """In-memory event publisher for development.
     
     This implementation stores events in memory and can be used for:
@@ -31,11 +28,20 @@ class InMemoryEventPublisher(IEventPublisher):
     
     def __init__(self):
         """Initialize event publisher with in-memory storage."""
+        super().__init__(service_name="InMemoryEventPublisher")
+        
         self._published_events: List[BaseDomainEvent] = []
         self._event_filters: Set[str] = set()
         self._subscribers: List[callable] = []
+    
+    @property
+    def events(self) -> List[BaseDomainEvent]:
+        """Get all published events (compatibility property for tests).
         
-        logger.info("InMemoryEventPublisher initialized")
+        Returns:
+            List[BaseDomainEvent]: All published events
+        """
+        return self._published_events
     
     async def publish(self, event: BaseDomainEvent) -> None:
         """Publish a single domain event.
@@ -43,6 +49,8 @@ class InMemoryEventPublisher(IEventPublisher):
         Args:
             event: Domain event to publish
         """
+        operation = "publish_event"
+        
         try:
             # Store event for inspection/replay
             self._published_events.append(event)
@@ -50,8 +58,9 @@ class InMemoryEventPublisher(IEventPublisher):
             # Check if event type is filtered
             event_type = type(event).__name__
             if self._event_filters and event_type not in self._event_filters:
-                logger.debug(
-                    "Event filtered out",
+                self._log_warning(
+                    operation=operation,
+                    message="Event filtered out",
                     event_type=event_type,
                     event_id=getattr(event, 'correlation_id', None),
                 )
@@ -61,8 +70,8 @@ class InMemoryEventPublisher(IEventPublisher):
             if self._subscribers:
                 await self._notify_subscribers(event)
             
-            logger.info(
-                "Domain event published",
+            self._log_success(
+                operation=operation,
                 event_type=event_type,
                 user_id=getattr(event, 'user_id', None),
                 correlation_id=getattr(event, 'correlation_id', None),
@@ -70,10 +79,10 @@ class InMemoryEventPublisher(IEventPublisher):
             )
             
         except Exception as e:
-            logger.error(
-                "Failed to publish domain event",
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
                 event_type=type(event).__name__,
-                error=str(e),
             )
             # Don't re-raise to prevent domain operations from failing
             # due to event publishing issues
@@ -84,6 +93,8 @@ class InMemoryEventPublisher(IEventPublisher):
         Args:
             events: List of domain events to publish
         """
+        operation = "publish_many_events"
+        
         if not events:
             return
         
@@ -92,17 +103,17 @@ class InMemoryEventPublisher(IEventPublisher):
             tasks = [self.publish(event) for event in events]
             await asyncio.gather(*tasks, return_exceptions=True)
             
-            logger.info(
-                "Multiple domain events published",
+            self._log_success(
+                operation=operation,
                 event_count=len(events),
                 event_types=[type(e).__name__ for e in events],
             )
             
         except Exception as e:
-            logger.error(
-                "Failed to publish multiple domain events",
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
                 event_count=len(events),
-                error=str(e),
             )
     
     def add_event_filter(self, event_type: str) -> None:
@@ -112,7 +123,10 @@ class InMemoryEventPublisher(IEventPublisher):
             event_type: Name of event type to filter
         """
         self._event_filters.add(event_type)
-        logger.debug("Event filter added", event_type=event_type)
+        self._log_success(
+            operation="add_event_filter",
+            event_type=event_type
+        )
     
     def remove_event_filter(self, event_type: str) -> None:
         """Remove event type from filter.
@@ -121,12 +135,15 @@ class InMemoryEventPublisher(IEventPublisher):
             event_type: Name of event type to remove from filter
         """
         self._event_filters.discard(event_type)
-        logger.debug("Event filter removed", event_type=event_type)
+        self._log_success(
+            operation="remove_event_filter",
+            event_type=event_type
+        )
     
     def clear_event_filters(self) -> None:
         """Clear all event filters (publish all events)."""
         self._event_filters.clear()
-        logger.debug("All event filters cleared")
+        self._log_success(operation="clear_event_filters")
     
     def add_subscriber(self, callback: callable) -> None:
         """Add event subscriber callback.
@@ -135,7 +152,7 @@ class InMemoryEventPublisher(IEventPublisher):
             callback: Async function to call when events are published
         """
         self._subscribers.append(callback)
-        logger.debug("Event subscriber added")
+        self._log_success(operation="add_subscriber")
     
     def get_published_events(
         self, 
@@ -170,7 +187,10 @@ class InMemoryEventPublisher(IEventPublisher):
         """Clear all stored published events."""
         event_count = len(self._published_events)
         self._published_events.clear()
-        logger.debug("Published events cleared", event_count=event_count)
+        self._log_success(
+            operation="clear_published_events",
+            event_count=event_count
+        )
     
     def clear_events(self) -> None:
         """Clear all stored published events (alias for compatibility)."""
@@ -212,6 +232,8 @@ class InMemoryEventPublisher(IEventPublisher):
         Args:
             event: Event to notify subscribers about
         """
+        operation = "notify_subscribers"
+        
         try:
             # Notify subscribers concurrently
             tasks = []
@@ -228,13 +250,13 @@ class InMemoryEventPublisher(IEventPublisher):
                 await asyncio.gather(*tasks, return_exceptions=True)
                 
         except Exception as e:
-            logger.error(
-                "Failed to notify event subscribers",
-                error=str(e),
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
             )
 
 
-class ProductionEventPublisher(IEventPublisher):
+class ProductionEventPublisher(IEventPublisher, BaseInfrastructureService):
     """Production event publisher using Redis pub/sub.
     
     This implementation would use Redis for production deployments,
@@ -247,8 +269,8 @@ class ProductionEventPublisher(IEventPublisher):
         Args:
             redis_client: Redis async client for pub/sub
         """
+        super().__init__(service_name="ProductionEventPublisher")
         self._redis = redis_client
-        logger.info("ProductionEventPublisher initialized")
     
     async def publish(self, event: BaseDomainEvent) -> None:
         """Publish event via Redis pub/sub.
@@ -256,13 +278,23 @@ class ProductionEventPublisher(IEventPublisher):
         Args:
             event: Domain event to publish
         """
-        # Implementation would serialize event and publish to Redis
-        # This is a placeholder for future production implementation
-        logger.info(
-            "Production event published",
-            event_type=type(event).__name__,
-            user_id=getattr(event, 'user_id', None),
-        )
+        operation = "publish_event"
+        
+        try:
+            # Implementation would serialize event and publish to Redis
+            # This is a placeholder for future production implementation
+            self._log_success(
+                operation=operation,
+                event_type=type(event).__name__,
+                user_id=getattr(event, 'user_id', None),
+            )
+            
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                event_type=type(event).__name__,
+            )
     
     async def publish_many(self, events: List[BaseDomainEvent]) -> None:
         """Publish multiple events via Redis pipeline.

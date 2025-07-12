@@ -11,7 +11,7 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     EmailServiceError,
     ForgotPasswordError,
     RateLimitExceededError,
@@ -254,11 +254,11 @@ class TestForgotPasswordEndpoint:
         # Note: CORS headers would be tested in integration tests with actual CORS middleware
     
     @pytest.mark.asyncio
-    async def test_forgot_password_request_validation_edge_cases(
+    async def test_forgot_password_validation_error_cases(
         self,
         async_client: AsyncClient
     ):
-        """Test request validation edge cases."""
+        """Test request validation error cases that should return 422."""
         # Cases that should be rejected at the Pydantic validation level
         validation_error_cases = [
             # Empty email
@@ -279,6 +279,19 @@ class TestForgotPasswordEndpoint:
             # Assert - These should fail at Pydantic validation level
             assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
+    @pytest.mark.asyncio
+    async def test_forgot_password_security_cases(
+        self,
+        async_client: AsyncClient,
+        mock_password_reset_request_service
+    ):
+        """Test security cases that should return 200 to prevent email enumeration."""
+        # Arrange
+        mock_password_reset_request_service.request_password_reset.return_value = {
+            "message": "Password reset email sent",
+            "status": "success"
+        }
+        
         # Cases that pass Pydantic validation but return success for security
         # (to prevent email enumeration attacks)
         security_cases = [
@@ -347,6 +360,5 @@ class TestForgotPasswordEndpoint:
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
         
-        # Assert - Should still work as FastAPI handles content type conversion
-        # but body should be properly formatted JSON
-        assert response.status_code in [status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_200_OK] 
+        # Assert - Should return 422 for invalid content type
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY 

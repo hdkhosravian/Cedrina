@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.core.exceptions import DecryptionError, EncryptionError
+from src.common.exceptions import DecryptionError, EncryptionError
 from src.domain.value_objects.password import (
     Password, 
     HashedPassword, 

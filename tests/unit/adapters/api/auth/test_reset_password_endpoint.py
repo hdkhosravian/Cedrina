@@ -11,7 +11,7 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     ForgotPasswordError,
     PasswordResetError,
     UserNotFoundError,
@@ -373,12 +373,8 @@ class TestResetPasswordEndpoint:
                 json=invalid_payload
             )
             
-            # Assert
-            # May be caught at validation level or domain level
-            assert response.status_code in [
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                status.HTTP_400_BAD_REQUEST
-            ]
+            # Assert - Should return 422 for validation errors
+            assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     
     @pytest.mark.asyncio
     async def test_reset_password_internationalization_support(

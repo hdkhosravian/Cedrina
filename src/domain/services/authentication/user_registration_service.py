@@ -10,12 +10,12 @@ import structlog
 
 from src.core.config.settings import settings
 
-from src.core.exceptions import DuplicateUserError, PasswordPolicyError
+from src.common.exceptions import DuplicateUserError, PasswordPolicyError
 from src.domain.entities.user import Role, User
 from src.domain.events.authentication_events import UserRegisteredEvent
 from src.domain.interfaces.repositories import IUserRepository
+from src.common.events import IEventPublisher
 from src.domain.interfaces import (
-    IEventPublisher,
     IUserRegistrationService,
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
@@ -23,15 +23,18 @@ from src.domain.interfaces import (
 from src.domain.value_objects.email import Email
 from src.domain.value_objects.password import HashedPassword, Password
 from src.domain.value_objects.username import Username
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 from src.domain.services.email_confirmation.email_confirmation_request_service import (
     EmailConfirmationRequestService,
 )
 
+from .base_authentication_service import BaseAuthenticationService, ServiceContext
+from src.common.exceptions import AuthenticationError
+
 logger = structlog.get_logger(__name__)
 
 
-class UserRegistrationService(IUserRegistrationService):
+class UserRegistrationService(IUserRegistrationService, BaseAuthenticationService):
     """Domain service for user registration operations.
     
     This service handles only registration-related operations,
@@ -62,9 +65,11 @@ class UserRegistrationService(IUserRegistrationService):
         Args:
             user_repository: Repository for user data access
             event_publisher: Publisher for domain events
+            confirmation_token_service: Service for email confirmation tokens
+            confirmation_email_service: Service for sending confirmation emails
         """
+        super().__init__(event_publisher)
         self._user_repository = user_repository
-        self._event_publisher = event_publisher
         self._confirmation_token_service = confirmation_token_service
         self._confirmation_email_service = confirmation_email_service
         
@@ -101,13 +106,21 @@ class UserRegistrationService(IUserRegistrationService):
             PasswordPolicyError: If password doesn't meet requirements
             ValueError: If input validation fails
         """
-        try:
+        context = ServiceContext(
+            correlation_id=correlation_id or "",
+            language=language,
+            client_ip=ip_address or "",
+            user_agent=user_agent or "",
+            operation="user_registration"
+        )
+        
+        async with self._operation_context(context) as ctx:
             logger.info(
                 "User registration started",
                 username=username.mask_for_logging(),
                 email=email.mask_for_logging(),
-                correlation_id=correlation_id,
-                ip_address=ip_address,
+                correlation_id=ctx.correlation_id,
+                ip_address=self._mask_ip(ip_address or ""),
             )
             
             # Check for existing username
@@ -115,10 +128,10 @@ class UserRegistrationService(IUserRegistrationService):
                 logger.warning(
                     "Registration failed - username already exists",
                     username=username.mask_for_logging(),
-                    correlation_id=correlation_id,
+                    correlation_id=ctx.correlation_id,
                 )
                 raise DuplicateUserError(
-                    get_translated_message("username_already_registered", language)
+                    get_translated_message("username_already_registered", ctx.language)
                 )
             
             # Check for existing email
@@ -126,10 +139,10 @@ class UserRegistrationService(IUserRegistrationService):
                 logger.warning(
                     "Registration failed - email already exists",
                     email=email.mask_for_logging(),
-                    correlation_id=correlation_id,
+                    correlation_id=ctx.correlation_id,
                 )
                 raise DuplicateUserError(
-                    get_translated_message("email_already_registered", language)
+                    get_translated_message("email_already_registered", ctx.language)
                 )
             
             # Create hashed password
@@ -153,63 +166,20 @@ class UserRegistrationService(IUserRegistrationService):
                     self._user_repository,
                     self._confirmation_token_service,
                     self._confirmation_email_service,
-                ).send_confirmation_email(saved_user, language)
+                ).send_confirmation_email(saved_user, ctx.language)
             
             # Publish registration event
-            await self._publish_registration_event(
-                saved_user,
-                correlation_id,
-                user_agent,
-                ip_address,
-            )
+            await self._publish_registration_event(saved_user, ctx)
             
             logger.info(
                 "User registration successful",
                 user_id=saved_user.id,
                 username=username.mask_for_logging(),
                 email=email.mask_for_logging(),
-                correlation_id=correlation_id,
+                correlation_id=ctx.correlation_id,
             )
             
             return saved_user
-            
-        except (DuplicateUserError, PasswordPolicyError):
-            # Re-raise domain exceptions as-is
-            raise
-        except ValueError as e:
-            # Input validation failed - check if it's a password validation error
-            error_message = str(e)
-            if any(keyword in error_message.lower() for keyword in [
-                "password", "character", "uppercase", "lowercase", "digit", "special"
-            ]):
-                # Convert password validation errors to PasswordPolicyError
-                logger.warning(
-                    "Registration failed - password policy violation",
-                    username=str(username)[:3] + "***" if username else "None",
-                    email=str(email)[:3] + "***" if email else "None",
-                    error=error_message,
-                    correlation_id=correlation_id,
-                )
-                raise PasswordPolicyError(error_message)
-            else:
-                # Other validation errors
-                logger.warning(
-                    "Registration failed - validation error",
-                    username=str(username)[:3] + "***" if username else "None",
-                    email=str(email)[:3] + "***" if email else "None",
-                    error=error_message,
-                    correlation_id=correlation_id,
-                )
-            raise
-        except Exception as e:
-            logger.error(
-                "Unexpected registration error",
-                username=str(username)[:3] + "***" if username else "None",
-                email=str(email)[:3] + "***" if email else "None",
-                error=str(e),
-                correlation_id=correlation_id,
-            )
-            raise
     
     async def check_username_availability(self, username: str) -> bool:
         """Check if username is available for registration.
@@ -286,41 +256,33 @@ class UserRegistrationService(IUserRegistrationService):
     async def _publish_registration_event(
         self,
         user: User,
-        correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
+        context: ServiceContext,
     ) -> None:
-        """Publish user registration event.
+        """Publish domain event for user registration.
         
         Args:
             user: Newly registered user
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
+            context: Service context
         """
-        try:
-            # Create and publish registration event
-            registration_event = UserRegisteredEvent.create(
-                user_id=user.id,
-                username=user.username,
-                email=user.email,
-                role=user.role.value,
-                correlation_id=correlation_id,
-                user_agent=user_agent,
-                ip_address=ip_address,
-            )
+        event = UserRegisteredEvent(
+            user_id=user.id,
+            email=user.email,
+            correlation_id=context.correlation_id
+        )
+        
+        await self._publish_domain_event(event, context, logger)
+    
+    async def _validate_operation_prerequisites(self, context: ServiceContext) -> None:
+        """Validate operation prerequisites for user registration.
+        
+        Args:
+            context: Service context
             
-            await self._event_publisher.publish(registration_event)
-            
-            logger.info(
-                "Registration event published",
-                user_id=user.id,
-                correlation_id=correlation_id,
-            )
-            
-        except Exception as e:
-            logger.error(
-                "Failed to publish registration event",
-                user_id=user.id,
-                error=str(e),
+        Raises:
+            AuthenticationError: If prerequisites are not met
+        """
+        # User registration service requires user repository to be available
+        if not self._user_repository:
+            raise AuthenticationError(
+                get_translated_message("service_unavailable", context.language)
             ) 

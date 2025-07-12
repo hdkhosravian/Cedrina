@@ -14,7 +14,7 @@ from src.core.config.settings import settings
 from src.core.lifecycle import create_lifespan_manager
 from src.core.middleware import configure_middleware
 from src.core.handlers import register_exception_handlers
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 def create_application() -> FastAPI:

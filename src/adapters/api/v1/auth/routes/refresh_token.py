@@ -1,58 +1,25 @@
 """
-Secure refresh token endpoint for advanced token renewal with comprehensive security.
-
-This endpoint implements the advanced security requirement that both access and refresh 
-tokens must be provided together and belong to the same session (same JTI). If tokens 
-don't match, both are immediately revoked. If valid, new tokens are issued with rotation.
-
-Security Features:
-- Token pairing validation (access + refresh must have same JTI)
-- Immediate dual revocation on security violations
-- Rate limiting against brute force attacks  
-- Comprehensive security logging and monitoring
-- Advanced threat detection and response
-- Session consistency validation
-- Performance optimization with concurrent operations
-
-Design Patterns:
-- Clean Architecture: Business logic in domain services
-- Dependency Injection: Loosely coupled components
-- Strategy Pattern: Validation strategies
-- Observer Pattern: Security event logging
-- Circuit Breaker: Resilience against failures
-
-Follows SOLID Principles:
-- Single Responsibility: Focused on token refresh
-- Open/Closed: Extensible through validation strategies
-- Liskov Substitution: Interchangeable dependencies
-- Interface Segregation: Focused interfaces
-- Dependency Inversion: Depends on abstractions
+Token refresh endpoint for securely refreshing JWT tokens.
+Implements clean architecture, DDD, SOLID, and advanced error handling patterns.
 """
 
 import uuid
-from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
     get_token_service,
-    get_enhanced_token_validation_service,
     get_error_classification_service,
 )
 from src.adapters.api.v1.auth.schemas import RefreshTokenRequest, TokenPair
-from src.core.exceptions import AuthenticationError, RateLimitExceededError
-from src.core.rate_limiting.ratelimiter import get_limiter
-from src.domain.interfaces import (
-    ITokenService,
-    IErrorClassificationService
-)
-from src.domain.interfaces.authentication.token_validation import IEnhancedTokenValidationService
-from src.domain.security.error_standardization import error_standardization_service
+from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
+from src.domain.interfaces import ITokenService, IErrorClassificationService
 from src.domain.security.logging_service import secure_logging_service
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.exceptions import AuthenticationError, RateLimitExceededError
+from src.core.rate_limiting.ratelimiter import get_limiter, get_remote_address
+from src.domain.security.error_standardization import error_standardization_service
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -138,7 +105,6 @@ limiter = get_limiter()
 async def refresh_tokens(
     request: Request,
     payload: RefreshTokenRequest,
-    enhanced_validation_service: IEnhancedTokenValidationService = Depends(get_enhanced_token_validation_service),
     token_service: ITokenService = Depends(get_token_service),
     error_classification_service: IErrorClassificationService = Depends(get_error_classification_service),
 ) -> TokenPair:
@@ -165,7 +131,6 @@ async def refresh_tokens(
     Args:
         request: FastAPI request object for security context
         payload: RefreshTokenRequest with access and refresh tokens
-        enhanced_validation_service: Advanced token validation service
         token_service: Token creation and management service  
         error_classification_service: Error classification and response service
         
@@ -176,20 +141,9 @@ async def refresh_tokens(
         AuthenticationError: If validation fails or security violation detected
         RateLimitExceededError: If rate limit is exceeded
     """
-    # Generate correlation ID for request tracking and security audit
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context for comprehensive logging
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="refresh_tokens",
-        operation="secure_token_refresh"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "refresh_tokens", "secure_token_refresh"
     )
     
     request_logger.info(
@@ -203,17 +157,17 @@ async def refresh_tokens(
     
     try:
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
         # Step 1: Enhanced token pairing validation
         # This is the critical security check that ensures both tokens belong to same session
         request_logger.debug(
             "Initiating enhanced token validation",
-            validation_service=enhanced_validation_service.__class__.__name__,
             security_enhanced=True
         )
         
-        validation_result = await enhanced_validation_service.validate_token_pair(
+        # Validate token pair using token service
+        validation_result = await token_service.validate_token_pair(
             access_token=payload.access_token,
             refresh_token=payload.refresh_token,
             client_ip=client_ip,
@@ -298,62 +252,17 @@ async def refresh_tokens(
             expires_in=new_tokens.get("expires_in", 900),
         )
         
-    except (ValueError, AuthenticationError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Classify error for consistent response format
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Enhanced security logging for authentication failures
-        request_logger.warning(
-            "Token refresh security failure",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
-            access_token_preview=payload.access_token[:20] + "..." if payload.access_token else "none",
-            refresh_token_preview=payload.refresh_token[:20] + "..." if payload.refresh_token else "none",
-            security_enhanced=True
-        )
-        
-        # TODO: Implement additional security measures for repeated failures:
-        # - Enhanced rate limiting escalation
-        # - IP-based blocking for suspicious patterns
-        # - User account security alerts
-        # - Security operations center (SOC) notifications
-        
-        # Re-raise for FastAPI exception handlers
-        raise classified_error
-        
-    except RateLimitExceededError as e:
-        # Rate limiting specific handling
-        request_logger.warning(
-            "Rate limit exceeded for token refresh",
-            client_ip_masked=secure_logging_service.mask_ip_address(client_ip),
-            user_agent_masked=secure_logging_service.sanitize_user_agent(user_agent),
-            security_enhanced=True
-        )
-        
-        # Re-raise rate limit error
-        raise e
-        
     except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Log unexpected errors for debugging and security analysis
-        request_logger.error(
-            "Unexpected error during token refresh",
-            error=str(e),
-            error_type=type(e).__name__,
-            security_enhanced=True
-        )
-        
-        # Create standardized error response without leaking internal details
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+        # Handle authentication errors consistently
+        context_info = {
+            "access_token_preview": payload.access_token[:20] + "..." if payload.access_token else "none",
+            "refresh_token_preview": payload.refresh_token[:20] + "..." if payload.refresh_token else "none"
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
-        )
-        
-        raise AuthenticationError(message=standardized_response["detail"]) 
+            context_info=context_info
+        ) 

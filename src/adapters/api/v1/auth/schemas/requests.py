@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Request‐payload Pydantic models for authentication endpoints."""
 
+import string
 from typing import Any, Dict, Literal
 
 from pydantic import BaseModel, EmailStr, Field, constr, field_validator
@@ -11,6 +12,54 @@ from pydantic import BaseModel, EmailStr, Field, constr, field_validator
 # ---------------------------------------------------------------------------
 
 UsernameStr = constr(min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_-]+$")
+
+# ---------------------------------------------------------------------------
+# Shared validation utilities -------------------------------------------------
+# ---------------------------------------------------------------------------
+
+def validate_jwt_format(token: str, field_name: str = "token") -> str:
+    """
+    Validate basic JWT format structure for security.
+    
+    Performs basic format validation without token verification
+    to prevent obvious attack vectors and malformed payloads.
+    
+    Args:
+        token: JWT token string to validate
+        field_name: Name of the field for error messages
+        
+    Returns:
+        str: Validated token string
+        
+    Raises:
+        ValueError: If token format is invalid
+    """
+    if not token or not isinstance(token, str):
+        raise ValueError(f"{field_name} must be a non-empty string")
+    
+    # Check basic JWT structure (header.payload.signature)
+    parts = token.split('.')
+    if len(parts) != 3:
+        raise ValueError(f"Invalid JWT format: must have exactly 3 parts separated by dots")
+    
+    # Check that each part is non-empty and contains valid base64url characters
+    valid_chars = string.ascii_letters + string.digits + '-_='
+    
+    for i, part in enumerate(parts):
+        if not part:
+            raise ValueError(f"JWT part {i + 1} cannot be empty")
+        
+        if not all(c in valid_chars for c in part):
+            raise ValueError(f"JWT part {i + 1} contains invalid characters")
+    
+    # Check reasonable length constraints
+    if len(token) < 50:
+        raise ValueError(f"{field_name} too short to be a valid JWT")
+    
+    if len(token) > 2048:
+        raise ValueError(f"{field_name} too long - possible attack vector")
+    
+    return token
 
 # ---------------------------------------------------------------------------
 # Concrete request models ----------------------------------------------------
@@ -44,7 +93,24 @@ class OAuthAuthenticateRequest(BaseModel):
 class LogoutRequest(BaseModel):
     """Payload expected by ``DELETE /auth/logout``."""
 
-    refresh_token: str = Field(..., examples=["eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."])
+    refresh_token: str = Field(
+        ...,
+        min_length=50,  # Minimum realistic JWT length
+        max_length=2048,  # Maximum reasonable JWT length to prevent abuse
+        examples=["eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."],
+        description="Refresh token to revoke for logout"
+    )
+    
+    @field_validator('refresh_token')
+    @classmethod
+    def validate_refresh_token_format(cls, v: str) -> str:
+        """
+        Validate refresh token format for security.
+        
+        Performs basic format validation without token verification
+        to prevent obvious attack vectors and malformed payloads.
+        """
+        return validate_jwt_format(v, "refresh_token")
 
 
 class RefreshTokenRequest(BaseModel):
@@ -85,33 +151,7 @@ class RefreshTokenRequest(BaseModel):
         Performs basic format validation without token verification
         to prevent obvious attack vectors and malformed payloads.
         """
-        if not v or not isinstance(v, str):
-            raise ValueError("Token must be a non-empty string")
-        
-        # Check basic JWT structure (header.payload.signature)
-        parts = v.split('.')
-        if len(parts) != 3:
-            raise ValueError("Invalid JWT format: must have exactly 3 parts separated by dots")
-        
-        # Check that each part is non-empty and contains valid base64url characters
-        import string
-        valid_chars = string.ascii_letters + string.digits + '-_='
-        
-        for i, part in enumerate(parts):
-            if not part:
-                raise ValueError(f"JWT part {i + 1} cannot be empty")
-            
-            if not all(c in valid_chars for c in part):
-                raise ValueError(f"JWT part {i + 1} contains invalid characters")
-        
-        # Check reasonable length constraints
-        if len(v) < 50:
-            raise ValueError("Token too short to be a valid JWT")
-        
-        if len(v) > 2048:
-            raise ValueError("Token too long - possible attack vector")
-        
-        return v
+        return validate_jwt_format(v, "token")
     
     class Config:
         """Pydantic configuration for enhanced security."""

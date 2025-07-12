@@ -30,18 +30,22 @@ from typing import List, Optional, Dict, Any
 import json
 import asyncio
 from enum import Enum
+import uuid
 
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from typing import Optional
+import structlog
 
-from src.domain.entities.token_family import TokenFamily, TokenFamilyStatus, TokenUsageRecord
+from src.domain.entities.token_family import TokenFamily
+from src.domain.value_objects.token_family_status import TokenFamilyStatus
+from src.domain.value_objects.token_usage_record import TokenUsageRecord
 from src.domain.interfaces.repositories.token_family_repository import ITokenFamilyRepository
 from src.domain.value_objects.jwt_token import TokenId
+from src.domain.value_objects.security_context import SecurityContext
 from src.infrastructure.services.security.field_encryption_service import FieldEncryptionService
+from src.infrastructure.database.token_family_model import TokenFamilyModel
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TokenFamilyRepository(ITokenFamilyRepository):
@@ -58,6 +62,11 @@ class TokenFamilyRepository(ITokenFamilyRepository):
     - Comprehensive error handling and logging
     - Batch operations for performance optimization
     - Real-time security metrics and monitoring
+    
+    Architecture:
+    - Uses TokenFamilyModel (ORM) for database operations
+    - Maps to/from TokenFamily (domain entity) for business logic
+    - Maintains clean separation between infrastructure and domain layers
     """
     
     def __init__(
@@ -75,24 +84,188 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         self.db_session = db_session
         self.encryption_service = encryption_service or FieldEncryptionService()
     
+    async def _to_domain(self, model: TokenFamilyModel) -> TokenFamily:
+        """
+        Map TokenFamilyModel (ORM) to TokenFamily (domain entity).
+        
+        This method handles the conversion from infrastructure layer (ORM model)
+        to domain layer (domain entity), including:
+        - Status enum conversion
+        - Datetime handling (naive to aware)
+        - Encrypted field decryption
+        - Value object reconstruction
+        
+        Args:
+            model: TokenFamilyModel ORM instance
+            
+        Returns:
+            TokenFamily: Domain entity with all business logic
+            
+        Raises:
+            ValueError: If required fields are missing or invalid
+        """
+        try:
+            # Convert status string to enum
+            status = TokenFamilyStatus(model.status)
+            
+            # Convert naive datetimes to timezone-aware (UTC)
+            def make_aware(dt):
+                if dt is None:
+                    return None
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=timezone.utc)
+                return dt
+            
+            # Create domain entity with basic fields
+            token_family = TokenFamily(
+                family_id=model.family_id,
+                user_id=model.user_id,
+                status=status,
+                created_at=make_aware(model.created_at),
+                last_used_at=make_aware(model.last_used_at),
+                compromised_at=make_aware(model.compromised_at),
+                expires_at=make_aware(model.expires_at),
+                compromise_reason=model.compromise_reason,
+                security_score=model.security_score
+            )
+            
+            # Decrypt and set encrypted fields if they exist
+            if model.active_tokens_encrypted:
+                try:
+                    active_tokens = await self.encryption_service.decrypt_token_list(
+                        model.active_tokens_encrypted
+                    )
+                    token_family.set_active_tokens(active_tokens)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to decrypt active tokens, using empty list",
+                        family_id=model.family_id[:8] + "...",
+                        error=str(e)
+                    )
+                    token_family.set_active_tokens([])
+            else:
+                token_family.set_active_tokens([])
+            
+            if model.revoked_tokens_encrypted:
+                try:
+                    revoked_tokens = await self.encryption_service.decrypt_token_list(
+                        model.revoked_tokens_encrypted
+                    )
+                    token_family.set_revoked_tokens(revoked_tokens)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to decrypt revoked tokens, using empty list",
+                        family_id=model.family_id[:8] + "...",
+                        error=str(e)
+                    )
+                    token_family.set_revoked_tokens([])
+            else:
+                token_family.set_revoked_tokens([])
+            
+            if model.usage_history_encrypted:
+                try:
+                    usage_history = await self.encryption_service.decrypt_usage_history(
+                        model.usage_history_encrypted
+                    )
+                    token_family.set_usage_history(usage_history)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to decrypt usage history, using empty list",
+                        family_id=model.family_id[:8] + "...",
+                        error=str(e)
+                    )
+                    token_family.set_usage_history([])
+            else:
+                token_family.set_usage_history([])
+            
+            return token_family
+            
+        except Exception as e:
+            logger.error(
+                "Failed to map ORM model to domain entity",
+                family_id=model.family_id[:8] + "..." if model.family_id else None,
+                error=str(e)
+            )
+            raise
+    
+    async def _to_model(self, entity: TokenFamily) -> TokenFamilyModel:
+        """
+        Map TokenFamily (domain entity) to TokenFamilyModel (ORM).
+        
+        This method handles the conversion from domain layer (domain entity)
+        to infrastructure layer (ORM model), including:
+        - Status enum to string conversion
+        - Datetime handling (aware to naive)
+        - Field encryption for sensitive data
+        - Value object serialization
+        
+        Args:
+            entity: TokenFamily domain entity
+            
+        Returns:
+            TokenFamilyModel: ORM model ready for database persistence
+            
+        Raises:
+            ValueError: If required fields are missing or invalid
+        """
+        try:
+            # Convert timezone-aware datetimes to naive UTC
+            def make_naive(dt):
+                if dt is None:
+                    return None
+                if dt.tzinfo is not None:
+                    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+            
+            # Create ORM model with basic fields
+            model = TokenFamilyModel(
+                family_id=entity.family_id,
+                user_id=entity.user_id,
+                status=entity.status.value,  # Convert enum to string
+                created_at=make_naive(entity.created_at),
+                last_used_at=make_naive(entity.last_used_at),
+                compromised_at=make_naive(entity.compromised_at),
+                expires_at=make_naive(entity.expires_at),
+                compromise_reason=entity.compromise_reason,
+                security_score=entity.security_score
+            )
+            
+            # Encrypt sensitive fields
+            if entity.active_tokens:
+                model.active_tokens_encrypted = await self.encryption_service.encrypt_token_list(entity.active_tokens)
+            
+            if entity.revoked_tokens:
+                model.revoked_tokens_encrypted = await self.encryption_service.encrypt_token_list(entity.revoked_tokens)
+            
+            if entity.usage_history:
+                model.usage_history_encrypted = await self.encryption_service.encrypt_usage_history(entity.usage_history)
+            
+            return model
+            
+        except Exception as e:
+            logger.error(
+                "Failed to map domain entity to ORM model",
+                family_id=entity.family_id[:8] + "..." if entity.family_id else None,
+                error=str(e)
+            )
+            raise
+    
     async def create_family(
         self,
         user_id: int,
         initial_token_id: Optional[TokenId] = None,
         expires_at: Optional[datetime] = None,
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        security_context: Optional[SecurityContext] = None,
         correlation_id: Optional[str] = None
     ) -> TokenFamily:
         """
-        Create a new token family with optional initial token.
+        Create a new token family for a user.
         
         Args:
             user_id: User ID for the token family
             initial_token_id: Optional initial token to add to the family
             expires_at: Optional expiration time for the family
-            client_ip: Client IP for security tracking
-            user_agent: User agent for security tracking
+            security_context: Security context for tracking
             correlation_id: Request correlation ID
             
         Returns:
@@ -106,44 +279,19 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             raise ValueError("User ID must be positive")
         
         try:
-            # Create new token family
-            token_family = TokenFamily(
+            # Create new token family domain entity
+            token_family = TokenFamily.create_new_family(
+                family_id=str(uuid.uuid4()),
                 user_id=user_id,
-                status=TokenFamilyStatus.ACTIVE,
-                created_at=datetime.now(timezone.utc),
                 expires_at=expires_at,
-                security_score=1.0
+                security_context=security_context,
+                initial_token_id=initial_token_id
             )
             
-            # Add initial token if provided
-            if initial_token_id:
-                token_family.add_token(
-                    initial_token_id,
-                    client_ip=client_ip,
-                    user_agent=user_agent,
-                    correlation_id=correlation_id
-                )
-            
-            # Encrypt and store sensitive data
-            await self._encrypt_and_store_token_family_data(token_family)
-            
-            # Save to database
-            self.db_session.add(token_family)
-            await self.db_session.commit()
-            await self.db_session.refresh(token_family)
-            
-            logger.info(
-                "Token family created",
-                family_id=token_family.family_id[:8] + "...",
-                user_id=user_id,
-                has_initial_token=initial_token_id is not None,
-                correlation_id=correlation_id
-            )
-            
-            return token_family
+            # Use the existing create_token_family method to handle persistence
+            return await self.create_token_family(token_family)
             
         except Exception as e:
-            await self.db_session.rollback()
             logger.error(
                 "Failed to create token family",
                 user_id=user_id,
@@ -155,42 +303,36 @@ class TokenFamilyRepository(ITokenFamilyRepository):
     async def create_token_family(self, token_family: TokenFamily) -> TokenFamily:
         """
         Persist a new TokenFamily instance to the database.
+        
         Args:
             token_family: The TokenFamily domain entity to persist
+            
         Returns:
             TokenFamily: The persisted entity (with DB-generated fields)
         """
-        def make_naive(dt):
-            if dt is None:
-                return None
-            if dt.tzinfo is not None:
-                return dt.astimezone(timezone.utc).replace(tzinfo=None)
-            return dt
         try:
-            # Convert all datetime fields to naive UTC
-            token_family.created_at = make_naive(token_family.created_at)
-            token_family.last_used_at = make_naive(token_family.last_used_at)
-            token_family.compromised_at = make_naive(token_family.compromised_at)
-            token_family.expires_at = make_naive(token_family.expires_at)
-            # Ensure status is the enum value, not the name
-            if isinstance(token_family.status, Enum):
-                token_family.status = token_family.status.value
-            await self._encrypt_and_store_token_family_data(token_family)
-            self.db_session.add(token_family)
-            # Don't commit here - let the calling service manage the transaction
-            # await self.db_session.commit()
-            # await self.db_session.refresh(token_family)
+            # Map domain entity to ORM model
+            model = await self._to_model(token_family)
+            
+            # Save to database
+            self.db_session.add(model)
+            await self.db_session.flush()
+            await self.db_session.refresh(model)
+            
+            # Map back to domain entity
+            persisted_entity = await self._to_domain(model)
+            
             logger.info(
-                "Token family added to session (via create_token_family)",
-                family_id=token_family.family_id[:8] + "...",
-                user_id=token_family.user_id
+                "Token family created successfully",
+                family_id=persisted_entity.family_id[:8] + "...",
+                user_id=persisted_entity.user_id
             )
-            return token_family
+            
+            return persisted_entity
+            
         except Exception as e:
-            # Don't rollback here - let the calling service manage the transaction
-            # await self.db_session.rollback()
             logger.error(
-                "Failed to add token family to session (via create_token_family)",
+                "Failed to create token family",
                 user_id=token_family.user_id,
                 error=str(e)
             )
@@ -208,21 +350,23 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         """
         try:
             result = await self.db_session.execute(
-                select(TokenFamily).where(TokenFamily.family_id == family_id)
+                select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
             )
-            token_family = result.scalars().first()
+            model = result.scalars().first()
             
-            if token_family:
-                # Decrypt sensitive data
-                await self._decrypt_and_load_token_family_data(token_family)
-                
-                logger.debug(
-                    "Token family retrieved and decrypted",
-                    family_id=family_id[:8] + "...",
-                    status=token_family.status.value,
-                    active_tokens_count=len(token_family.active_tokens),
-                    revoked_tokens_count=len(token_family.revoked_tokens)
-                )
+            if not model:
+                return None
+            
+            # Map ORM model to domain entity
+            token_family = await self._to_domain(model)
+            
+            logger.debug(
+                "Token family retrieved",
+                family_id=family_id[:8] + "...",
+                status=token_family.status.value,
+                active_tokens_count=len(token_family.active_tokens),
+                revoked_tokens_count=len(token_family.revoked_tokens)
+            )
             
             return token_family
             
@@ -238,11 +382,11 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         """
         Get token family by token ID.
         
-        Note: This is a simplified implementation. In production with encryption,
-        this would require either:
+        Note: This implementation searches through families by decrypting token lists.
+        In production with large datasets, consider:
         1. A separate token-to-family mapping table for performance
-        2. Decryption of token lists (expensive for large datasets)
-        3. Token ID hashing for indexable lookups
+        2. Token ID hashing for indexable lookups
+        3. Caching frequently accessed families
         
         Args:
             token_id: Token ID to search for
@@ -251,18 +395,45 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             Optional[TokenFamily]: Token family containing the token, None otherwise
         """
         try:
-            # TODO: Implement efficient token lookup when encryption is added
-            # For now, this is a placeholder that returns None
-            # In production, we would:
-            # 1. Use a token_id -> family_id mapping table
-            # 2. Or use hashed token IDs for indexable searches
-            # 3. Or implement a search service for encrypted data
-            
-            logger.debug(
-                "Token family lookup by token",
-                token_id=token_id.mask_for_logging()
+            # Get all active token families (we could optimize this with pagination)
+            # For now, we'll search through recent families first
+            result = await self.db_session.execute(
+                select(TokenFamilyModel)
+                .where(TokenFamilyModel.status == TokenFamilyStatus.ACTIVE.value)
+                .order_by(TokenFamilyModel.last_used_at.desc())
+                .limit(100)  # Limit search to most recent 100 families for performance
             )
+            models = result.scalars().all()
             
+            # Search through families to find the one containing this token
+            for model in models:
+                # Map ORM model to domain entity
+                family = await self._to_domain(model)
+                
+                # Check if token is in active tokens
+                if token_id in family.active_tokens:
+                    logger.debug(
+                        "Token found in active tokens",
+                        token_id=token_id.mask_for_logging(),
+                        family_id=family.family_id[:8] + "..."
+                    )
+                    return family
+                
+                # Check if token is in revoked tokens (for security analysis)
+                if token_id in family.revoked_tokens:
+                    logger.debug(
+                        "Token found in revoked tokens",
+                        token_id=token_id.mask_for_logging(),
+                        family_id=family.family_id[:8] + "..."
+                    )
+                    return family
+            
+            # Token not found in any family
+            logger.debug(
+                "Token not found in any family",
+                token_id=token_id.mask_for_logging(),
+                families_searched=len(models)
+            )
             return None
             
         except Exception as e:
@@ -288,19 +459,19 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             DatabaseError: If database operation fails
         """
         try:
-            # Encrypt and store updated data
-            await self._encrypt_and_store_token_family_data(token_family)
+            # Map domain entity to ORM model
+            model = self._to_model(token_family)
             
             # Update last_used_at timestamp
-            token_family.last_used_at = datetime.now(timezone.utc)
+            model.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
             
             # Merge changes
-            self.db_session.add(token_family)
-            await self.db_session.commit()
-            await self.db_session.refresh(token_family)
+            self.db_session.add(model)
+            await self.db_session.flush()
+            await self.db_session.refresh(model)
             
-            # Decrypt data again for return
-            await self._decrypt_and_load_token_family_data(token_family)
+            # Map back to domain entity
+            updated_entity = await self._to_domain(model)
             
             logger.debug(
                 "Token family updated",
@@ -308,10 +479,9 @@ class TokenFamilyRepository(ITokenFamilyRepository):
                 status=token_family.status.value
             )
             
-            return token_family
+            return updated_entity
             
         except Exception as e:
-            await self.db_session.rollback()
             logger.error(
                 "Failed to update token family",
                 family_id=token_family.family_id[:8] + "...",
@@ -324,8 +494,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         family_id: str,
         reason: str,
         detected_token: Optional[TokenId] = None,
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        security_context: Optional[SecurityContext] = None,
         correlation_id: Optional[str] = None
     ) -> bool:
         """
@@ -335,8 +504,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             family_id: Token family ID to compromise
             reason: Reason for compromise
             detected_token: Token that triggered the compromise
-            client_ip: Client IP for security tracking
-            user_agent: User agent for security tracking
+            security_context: Security context for tracking
             correlation_id: Request correlation ID
             
         Returns:
@@ -356,8 +524,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             token_family.compromise_family(
                 reason=reason,
                 detected_token=detected_token,
-                client_ip=client_ip,
-                user_agent=user_agent,
+                security_context=security_context,
                 correlation_id=correlation_id
             )
             
@@ -375,7 +542,6 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             return True
             
         except Exception as e:
-            await self.db_session.rollback()
             logger.error(
                 "Failed to compromise token family",
                 family_id=family_id[:8] + "...",
@@ -403,18 +569,22 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         """
         try:
             result = await self.db_session.execute(
-                select(TokenFamily).where(TokenFamily.family_id == family_id)
+                select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
             )
-            token_family = result.scalars().first()
+            model = result.scalars().first()
             
-            if not token_family:
+            if not model:
                 return False
             
-            # Update status and reason
-            token_family.status = TokenFamilyStatus.REVOKED
-            token_family.compromise_reason = reason
-            token_family.compromised_at = datetime.now(timezone.utc)
+            # Map to domain entity
+            token_family = await self._to_domain(model)
             
+            # Update status and reason
+            token_family._status = TokenFamilyStatus.REVOKED
+            token_family._compromise_reason = reason
+            token_family._compromised_at = datetime.now(timezone.utc)
+            
+            # Update in database
             await self.update_family(token_family)
             
             logger.info(
@@ -427,7 +597,6 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             return True
             
         except Exception as e:
-            await self.db_session.rollback()
             logger.error(
                 "Failed to revoke token family",
                 family_id=family_id[:8] + "...",
@@ -440,8 +609,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         self,
         token_id: TokenId,
         family_id: str,
-        client_ip: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        security_context: Optional[SecurityContext] = None,
         correlation_id: Optional[str] = None
     ) -> bool:
         """
@@ -452,8 +620,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         Args:
             token_id: Token ID to check
             family_id: Expected family ID
-            client_ip: Client IP for security tracking
-            user_agent: User agent for security tracking
+            security_context: Security context for tracking
             correlation_id: Request correlation ID
             
         Returns:
@@ -482,9 +649,8 @@ class TokenFamilyRepository(ITokenFamilyRepository):
                 )
                 return True
             
-            # TODO: When encryption is implemented, check revoked tokens list
-            # For now, assume no reuse detected
-            reuse_detected = False
+            # Check if token is in revoked tokens list
+            reuse_detected = token_id in token_family.revoked_tokens
             
             # Calculate response time
             end_time = datetime.now(timezone.utc)
@@ -530,15 +696,21 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             List[TokenFamily]: List of token families
         """
         try:
-            query = select(TokenFamily).where(TokenFamily.user_id == user_id)
+            query = select(TokenFamilyModel).where(TokenFamilyModel.user_id == user_id)
             
             if status:
-                query = query.where(TokenFamily.status == status)
+                query = query.where(TokenFamilyModel.status == status.value)
             
-            query = query.order_by(TokenFamily.created_at.desc()).limit(limit)
+            query = query.order_by(TokenFamilyModel.created_at.desc()).limit(limit)
             
             result = await self.db_session.execute(query)
-            families = list(result.scalars().all())
+            models = result.scalars().all()
+            
+            # Map ORM models to domain entities
+            families = []
+            for model in models:
+                family = await self._to_domain(model)
+                families.append(family)
             
             logger.debug(
                 "Retrieved user token families",
@@ -573,15 +745,21 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         try:
             current_time = datetime.now(timezone.utc)
             
-            query = select(TokenFamily).where(
+            query = select(TokenFamilyModel).where(
                 or_(
-                    TokenFamily.expires_at < current_time,
-                    TokenFamily.status == TokenFamilyStatus.EXPIRED
+                    TokenFamilyModel.expires_at < current_time,
+                    TokenFamilyModel.status == TokenFamilyStatus.EXPIRED.value
                 )
-            ).order_by(TokenFamily.expires_at.asc()).limit(limit)
+            ).order_by(TokenFamilyModel.expires_at.asc()).limit(limit)
             
             result = await self.db_session.execute(query)
-            families = list(result.scalars().all())
+            models = result.scalars().all()
+            
+            # Map ORM models to domain entities
+            families = []
+            for model in models:
+                family = await self._to_domain(model)
+                families.append(family)
             
             logger.debug(
                 "Retrieved expired token families",
@@ -613,25 +791,25 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             Dict[str, Any]: Security metrics data
         """
         try:
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
             window_start = current_time - timedelta(hours=time_window_hours)
             
             # Base query conditions
-            conditions = [TokenFamily.created_at >= window_start]
+            conditions = [TokenFamilyModel.created_at >= window_start]
             if user_id:
-                conditions.append(TokenFamily.user_id == user_id)
+                conditions.append(TokenFamilyModel.user_id == user_id)
             
             # Get family counts by status
             status_query = select(
-                TokenFamily.status,
-                func.count(TokenFamily.id).label('count')
-            ).where(and_(*conditions)).group_by(TokenFamily.status)
+                TokenFamilyModel.status,
+                func.count(TokenFamilyModel.id).label('count')
+            ).where(and_(*conditions)).group_by(TokenFamilyModel.status)
             
             status_result = await self.db_session.execute(status_query)
-            status_counts = {row.status.value: row.count for row in status_result}
+            status_counts = {row.status: row.count for row in status_result}
             
             # Get total families created
-            total_query = select(func.count(TokenFamily.id)).where(and_(*conditions))
+            total_query = select(func.count(TokenFamilyModel.id)).where(and_(*conditions))
             total_result = await self.db_session.execute(total_query)
             total_families = total_result.scalar() or 0
             
@@ -642,7 +820,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             compromise_rate = (compromised_count / total_families * 100) if total_families > 0 else 0.0
             
             # Get average security score
-            avg_score_query = select(func.avg(TokenFamily.security_score)).where(and_(*conditions))
+            avg_score_query = select(func.avg(TokenFamilyModel.security_score)).where(and_(*conditions))
             avg_score_result = await self.db_session.execute(avg_score_query)
             avg_security_score = float(avg_score_result.scalar() or 1.0)
             
@@ -694,17 +872,23 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             List[TokenFamily]: List of compromised token families
         """
         try:
-            query = select(TokenFamily).where(
-                TokenFamily.status == TokenFamilyStatus.COMPROMISED
+            query = select(TokenFamilyModel).where(
+                TokenFamilyModel.status == TokenFamilyStatus.COMPROMISED.value
             )
             
             if since:
-                query = query.where(TokenFamily.compromised_at >= since)
+                query = query.where(TokenFamilyModel.compromised_at >= since)
             
-            query = query.order_by(TokenFamily.compromised_at.desc()).limit(limit)
+            query = query.order_by(TokenFamilyModel.compromised_at.desc()).limit(limit)
             
             result = await self.db_session.execute(query)
-            families = list(result.scalars().all())
+            models = result.scalars().all()
+            
+            # Map ORM models to domain entities
+            families = []
+            for model in models:
+                family = await self._to_domain(model)
+                families.append(family)
             
             logger.debug(
                 "Retrieved compromised token families",
@@ -717,83 +901,6 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         except Exception as e:
             logger.error(
                 "Failed to get compromised token families",
-                error=str(e)
-            )
-            raise
-    
-    async def _encrypt_and_store_token_family_data(self, token_family: TokenFamily) -> None:
-        """
-        Encrypt and store sensitive token family data.
-        
-        Args:
-            token_family: Token family entity to encrypt data for
-        """
-        try:
-            # Encrypt active tokens if any
-            if token_family.active_tokens:
-                token_family.active_tokens_encrypted = await self.encryption_service.encrypt_token_list(
-                    token_family.active_tokens
-                )
-            
-            # Encrypt revoked tokens if any
-            if token_family.revoked_tokens:
-                token_family.revoked_tokens_encrypted = await self.encryption_service.encrypt_token_list(
-                    token_family.revoked_tokens
-                )
-            
-            # Encrypt usage history if any
-            if token_family.usage_history:
-                token_family.usage_history_encrypted = await self.encryption_service.encrypt_usage_history(
-                    token_family.usage_history
-                )
-            
-        except Exception as e:
-            logger.error(
-                "Failed to encrypt token family data",
-                family_id=token_family.family_id[:8] + "...",
-                error=str(e)
-            )
-            raise
-    
-    async def _decrypt_and_load_token_family_data(self, token_family: TokenFamily) -> None:
-        """
-        Decrypt and load sensitive token family data.
-        
-        Args:
-            token_family: Token family entity to decrypt data for
-        """
-        try:
-            # Decrypt active tokens if encrypted data exists
-            if token_family.active_tokens_encrypted:
-                decrypted_tokens = await self.encryption_service.decrypt_token_list(
-                    token_family.active_tokens_encrypted
-                )
-                token_family.set_active_tokens(decrypted_tokens)
-            else:
-                token_family.set_active_tokens([])
-            
-            # Decrypt revoked tokens if encrypted data exists
-            if token_family.revoked_tokens_encrypted:
-                decrypted_tokens = await self.encryption_service.decrypt_token_list(
-                    token_family.revoked_tokens_encrypted
-                )
-                token_family.set_revoked_tokens(decrypted_tokens)
-            else:
-                token_family.set_revoked_tokens([])
-            
-            # Decrypt usage history if encrypted data exists
-            if token_family.usage_history_encrypted:
-                decrypted_history = await self.encryption_service.decrypt_usage_history(
-                    token_family.usage_history_encrypted
-                )
-                token_family.set_usage_history(decrypted_history)
-            else:
-                token_family.set_usage_history([])
-            
-        except Exception as e:
-            logger.error(
-                "Failed to decrypt token family data",
-                family_id=token_family.family_id[:8] + "...",
                 error=str(e)
             )
             raise 

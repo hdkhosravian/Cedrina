@@ -265,15 +265,15 @@ tests/
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from src.domain.services.authentication.user_authentication_service import (
-    UserAuthenticationService,
+from src.domain.services.authentication.unified_authentication_service import (
+    UnifiedAuthenticationService,
 )
 from src.domain.value_objects.username import Username
 from src.domain.value_objects.password import Password
 
 
-class TestUserAuthenticationService:
-    """Test suite for UserAuthenticationService following TDD principles."""
+class TestUnifiedAuthenticationService:
+    """Test suite for UnifiedAuthenticationService following TDD principles."""
 
     @pytest.fixture
     def mock_user_repository(self):
@@ -287,8 +287,8 @@ class TestUserAuthenticationService:
 
     @pytest.fixture
     def auth_service(self, mock_user_repository, mock_event_publisher):
-        """Provide UserAuthenticationService instance for testing."""
-        return UserAuthenticationService(
+        """Provide UnifiedAuthenticationService instance for testing."""
+        return UnifiedAuthenticationService(
             user_repository=mock_user_repository,
             event_publisher=mock_event_publisher,
         )

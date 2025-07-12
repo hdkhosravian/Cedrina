@@ -22,12 +22,13 @@ Email and Reset Services:
 """
 
 # Authentication Services (DDD-compliant implementations)
-from .authentication.user_authentication_service import UserAuthenticationService
-from .authentication.user_authentication_security_service import UserAuthenticationSecurityService
 from .authentication.user_registration_service import UserRegistrationService
 from .authentication.user_logout_service import UserLogoutService
 from .authentication.password_change_service import PasswordChangeService
-from .authentication.oauth_service import OAuthAuthenticationService
+from .authentication.unified_authentication_service import UnifiedAuthenticationService
+from .authentication.user_validation_service import UserValidationService
+from .authentication.token_family_management_service import TokenFamilyManagementService
+from .authentication.error_classification_service import ErrorClassificationService
 
 # Security Services
 from .security.password_policy import PasswordPolicyValidator
@@ -40,14 +41,19 @@ from .password_reset.password_reset_service import PasswordResetService
 # Email Services
 from .email.email_service import EmailService
 
+# Email Confirmation Services
+from .email_confirmation.email_confirmation_request_service import EmailConfirmationRequestService
+from .email_confirmation.email_confirmation_service import EmailConfirmationService
+
 __all__ = [
     # Authentication Domain Services
-    "UserAuthenticationService",
-    "UserAuthenticationSecurityService", 
     "UserRegistrationService",
-    "UserLogoutService",
+    "UserLogoutService", 
     "PasswordChangeService",
-    "OAuthAuthenticationService",
+    "UnifiedAuthenticationService",
+    "UserValidationService",
+    "TokenFamilyManagementService",
+    "ErrorClassificationService",
     
     # Security Domain Services
     "PasswordPolicyValidator",
@@ -59,4 +65,8 @@ __all__ = [
     
     # Email Services
     "EmailService",
+    
+    # Email Confirmation Services
+    "EmailConfirmationRequestService",
+    "EmailConfirmationService",
 ]

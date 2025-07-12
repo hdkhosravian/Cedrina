@@ -56,7 +56,7 @@ async def test_register_rate_limit_enforced(async_client, monkeypatch):
     assert resp.status_code == 429
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_forgot_password_rate_limit_enforced(async_client, monkeypatch):
     monkeypatch.setattr(settings, "RATE_LIMIT_STORAGE_URL", "memory://")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
@@ -89,7 +89,7 @@ async def test_user_login_inactive_account(async_client, async_session):
         "/api/v1/auth/login",
         json={"username": data["username"], "password": data["password"]},
     )
-    assert resp.status_code in {401, 403, 422}
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio

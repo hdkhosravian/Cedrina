@@ -23,12 +23,12 @@ from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
+import structlog
 
 from src.domain.entities.oauth_profile import OAuthProfile, Provider
 from src.domain.interfaces.repositories import IOAuthProfileRepository
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class OAuthProfileRepository(IOAuthProfileRepository):

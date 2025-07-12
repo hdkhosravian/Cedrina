@@ -25,6 +25,7 @@ from pydantic import EmailStr
 
 from src.domain.entities.user import User
 from src.domain.value_objects.reset_token import ResetToken
+from src.domain.value_objects.security_context import SecurityContext
 
 
 class IPasswordResetTokenService(ABC):
@@ -37,7 +38,7 @@ class IPasswordResetTokenService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only password reset token operations
-    - Domain Value Objects: Uses ResetToken value objects for validation
+    - Domain Value Objects: Uses ResetToken and SecurityContext value objects
     - Ubiquitous Language: Method names reflect business concepts
     - Fail-Safe Security: Implements secure token generation and validation
     """
@@ -116,7 +117,7 @@ class IPasswordResetEmailService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only password reset email operations
-    - Domain Value Objects: Uses ResetToken value objects for validation
+    - Domain Value Objects: Uses ResetToken and SecurityContext value objects
     - Ubiquitous Language: Method names reflect business concepts
     - Dependency Inversion: Abstracts external email infrastructure
     """
@@ -134,6 +135,9 @@ class IPasswordResetEmailService(ABC):
 
         Returns:
             `True` if the email was sent successfully, `False` otherwise.
+
+        Raises:
+            EmailDeliveryError: If email delivery fails
         """
         raise NotImplementedError
 

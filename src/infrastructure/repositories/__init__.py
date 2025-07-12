@@ -1,6 +1,15 @@
-"""Repository implementations for the infrastructure layer."""
+"""Repository implementations for the infrastructure layer.
+
+This module provides concrete implementations of domain repository interfaces
+following clean architecture principles.
+"""
 
 from .user_repository import UserRepository
-from src.domain.interfaces.repositories import IUserRepository
+from .oauth_profile_repository import OAuthProfileRepository
+from .token_family_repository import TokenFamilyRepository
 
-__all__ = ["UserRepository", "IUserRepository"] 
+__all__ = [
+    "UserRepository",
+    "OAuthProfileRepository", 
+    "TokenFamilyRepository",
+] 

@@ -14,7 +14,7 @@ from jose import jwt
 from src.adapters.api.v1.auth.routes.logout import logout_user
 from src.adapters.api.v1.auth.schemas import LogoutRequest
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError
 from src.domain.entities.user import Role, User
 from src.domain.interfaces import IUserLogoutService
 

@@ -5,7 +5,7 @@ from src.domain.entities.user import User
 from src.domain.services.email_confirmation.email_confirmation_request_service import (
     EmailConfirmationRequestService,
 )
-from src.core.exceptions import EmailServiceError
+from src.common.exceptions import EmailServiceError
 from src.domain.value_objects.confirmation_token import ConfirmationToken
 
 

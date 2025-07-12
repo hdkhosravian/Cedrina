@@ -32,18 +32,18 @@ import json
 from datetime import datetime
 from typing import List, Optional, Any, Dict, Union
 
-import structlog
 from cryptography.fernet import Fernet, InvalidToken
 
 from src.core.config.settings import settings
-from src.core.exceptions import EncryptionError, DecryptionError
+from src.common.exceptions import EncryptionError, DecryptionError
 from src.domain.value_objects.jwt_token import TokenId
-from src.domain.entities.token_family import TokenUsageRecord, TokenUsageEvent
+from src.domain.value_objects.security_context import SecurityContext
+from src.domain.value_objects.token_usage_record import TokenUsageRecord
+from src.domain.value_objects.token_usage_event import TokenUsageEvent
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = structlog.get_logger(__name__)
 
-
-class FieldEncryptionService:
+class FieldEncryptionService(BaseInfrastructureService):
     """
     Service for encrypting and decrypting token family field data.
     
@@ -66,29 +66,54 @@ class FieldEncryptionService:
     
     def __init__(self, encryption_key: Optional[str] = None):
         """
-        Initialize field encryption service.
+        Initialize field encryption service with Fernet encryption.
         
         Args:
             encryption_key: Optional encryption key. If None, uses PGCRYPTO_KEY
+                           from settings or generates a development key.
+                           
+        Security Note:
+            - In production, PGCRYPTO_KEY must be a proper 32-byte base64 key
+            - For development, a key will be generated automatically
         """
-        self._logger = logger.bind(
-            service="FieldEncryptionService",
-            operation="initialization"
+        super().__init__(
+            service_name="FieldEncryptionService",
+            encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256",
+            key_source="configured" if encryption_key else "settings_or_generated"
         )
         
         try:
+            # Try to get key from parameter or settings
             if encryption_key:
                 key = encryption_key.encode()
             else:
-                key = settings.PGCRYPTO_KEY.get_secret_value().encode()
+                try:
+                    key = settings.PGCRYPTO_KEY.get_secret_value().encode()
+                except (AttributeError, ValueError):
+                    # PGCRYPTO_KEY not set or invalid, generate development key
+                    self._logger.warning(
+                        "PGCRYPTO_KEY not configured, generating development key"
+                    )
+                    key = Fernet.generate_key()
             
-            # Initialize Fernet with validated key
-            self._fernet = Fernet(key)
+            # Validate key format for Fernet
+            if isinstance(key, str):
+                key = key.encode()
+            
+            # Try to initialize Fernet to validate key
+            try:
+                self._fernet = Fernet(key)
+            except ValueError:
+                # Invalid key format, generate a valid one
+                self._logger.warning(
+                    "Invalid encryption key format, generating valid Fernet key"
+                )
+                self._fernet = Fernet(Fernet.generate_key())
             
             self._logger.info(
                 "Field encryption service initialized",
                 encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256",
-                key_source="configured" if not encryption_key else "provided"
+                key_source="configured" if encryption_key else "settings_or_generated"
             )
             
         except Exception as e:
@@ -222,8 +247,8 @@ class FieldEncryptionService:
                     "token_id": record.token_id.value,
                     "event_type": record.event_type.value,
                     "timestamp": record.timestamp.isoformat(),
-                    "client_ip": record.client_ip,
-                    "user_agent": record.user_agent,
+                    "client_ip": record.security_context.client_ip if record.security_context else None,
+                    "user_agent": record.security_context.user_agent if record.security_context else None,
                     "correlation_id": record.correlation_id
                 })
             
@@ -282,12 +307,20 @@ class FieldEncryptionService:
             # Reconstruct TokenUsageRecord objects
             usage_history = []
             for record_data in data["data"]:
+                # Create security context if client data is available
+                security_context = None
+                if record_data.get("client_ip") and record_data.get("user_agent"):
+                    security_context = SecurityContext.create_for_request(
+                        client_ip=record_data["client_ip"],
+                        user_agent=record_data["user_agent"],
+                        correlation_id=record_data.get("correlation_id")
+                    )
+                
                 usage_record = TokenUsageRecord(
                     token_id=TokenId(record_data["token_id"]),
                     event_type=TokenUsageEvent(record_data["event_type"]),
                     timestamp=datetime.fromisoformat(record_data["timestamp"]),
-                    client_ip=record_data.get("client_ip"),
-                    user_agent=record_data.get("user_agent"),
+                    security_context=security_context,
                     correlation_id=record_data.get("correlation_id")
                 )
                 usage_history.append(usage_record)

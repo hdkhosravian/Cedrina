@@ -11,7 +11,7 @@ from jinja2 import Template, DictLoader
 
 from src.domain.entities.user import User, Role
 from src.domain.services.email.email_service import EmailService
-from src.core.exceptions import EmailServiceError, TemplateRenderError
+from src.common.exceptions import EmailServiceError, TemplateRenderError
 from src.core.config.email import EmailSettings
 
 

@@ -221,26 +221,23 @@ This module represents enterprise-grade software engineering practices and serve
 as a reference implementation for other authentication endpoints in the system.
 """
 
-import uuid
-
 import structlog
 from fastapi import APIRouter, Depends, Request, status
 
 from src.adapters.api.v1.auth.schemas import ChangePasswordRequest, MessageResponse
+from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
 from src.core.dependencies.auth import get_current_user
-from src.core.exceptions import AuthenticationError, PasswordPolicyError, PasswordValidationError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
     IPasswordChangeService,
     IErrorClassificationService
 )
-from src.domain.security.error_standardization import error_standardization_service
 from src.domain.security.logging_service import secure_logging_service
 from src.infrastructure.dependency_injection.auth_dependencies import (
     get_password_change_service,
     get_error_classification_service,
 )
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -292,21 +289,9 @@ async def change_password(
         - Rate limiting via middleware (slowapi)
         - Clean error classification through domain services
     """
-    # Generate correlation ID for request tracking
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        user_id=current_user.id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="change_password",
-        operation="password_change"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "change_password", "password_change"
     )
     
     request_logger.info(
@@ -319,7 +304,7 @@ async def change_password(
     
     try:
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
         # Change password using clean domain service
         await password_change_service.change_password(
@@ -342,43 +327,18 @@ async def change_password(
         success_message = get_translated_message("password_changed_successfully", language)
         return MessageResponse(message=success_message)
 
-    except (AuthenticationError, PasswordPolicyError, PasswordValidationError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Use domain service to classify and handle errors cleanly
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Log the error with security context
-        request_logger.warning(
-            "Password change failed",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
-            username_masked=secure_logging_service.mask_username(current_user.username),
-            security_enhanced=True
-        )
-        
-        # Re-raise the classified error to let proper exception handlers handle it
-        raise classified_error
-        
     except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Handle unexpected errors with enhanced security logging
-        request_logger.error(
-            "Password change failed - unexpected error",
-            error=str(e),
-            error_type=type(e).__name__,
-            username_masked=secure_logging_service.mask_username(current_user.username),
-            security_enhanced=True
-        )
-        
-        # Use error standardization service for consistent response
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+        # Handle authentication errors consistently
+        context_info = {
+            "username_masked": secure_logging_service.mask_username(current_user.username),
+            "has_old_password": bool(payload.old_password),
+            "has_new_password": bool(payload.new_password)
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
+            context_info=context_info
         )
-        raise AuthenticationError(message=standardized_response["detail"])

@@ -1,5 +1,4 @@
 from datetime import datetime  # For timestamp fields
-from enum import Enum  # For type-safe role enumeration
 from typing import Optional  # For optional fields
 
 from pydantic import EmailStr, field_validator  # For email validation and custom validation
@@ -7,23 +6,7 @@ from sqlalchemy import DateTime, text  # For SQL expressions and explicit DateTi
 from sqlalchemy.dialects import postgresql  # Import PostgreSQL dialect
 from sqlmodel import Column, Field, Index, SQLModel, String  # For ORM and table definition
 
-from src.utils.i18n import get_translated_message  # For translation in validation
-from src.core.config.settings import settings
-
-
-class Role(str, Enum):
-    """Represents the role of a user within the system (RBAC).
-
-    This value object defines the possible roles a user can have, ensuring that
-    role assignments are type-safe and constrained to a predefined set.
-
-    Attributes:
-        ADMIN: Confers administrative privileges for system management.
-        USER: Represents a standard user with regular access rights.
-    """
-
-    ADMIN = "admin"
-    USER = "user"
+from src.domain.entities.role import Role
 
 
 class User(SQLModel, table=True):
@@ -87,7 +70,7 @@ class User(SQLModel, table=True):
         description="Indicates if the user's account is active. Inactive users cannot log in.",
     )
     email_confirmed: bool = Field(
-        default_factory=lambda: not settings.EMAIL_CONFIRMATION_ENABLED,
+        default_factory=lambda: True,  # Default to confirmed, will be overridden in __init__
         description="Indicates if the user's email has been confirmed.",
     )
     created_at: datetime = Field(
@@ -131,6 +114,19 @@ class User(SQLModel, table=True):
         {"extend_existing": True},
     )
 
+    def __init__(self, **data):
+        """Initialize user with proper email confirmation setting."""
+        super().__init__(**data)
+        # Set email_confirmed based on settings (lazy import to avoid circular dependency)
+        if not hasattr(self, '_email_confirmed_set'):
+            try:
+                from src.core.config.settings import settings
+                self.email_confirmed = not settings.EMAIL_CONFIRMATION_ENABLED
+            except ImportError:
+                # Fallback if settings not available
+                self.email_confirmed = True
+            self._email_confirmed_set = True
+
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
@@ -143,9 +139,7 @@ class User(SQLModel, table=True):
             ValueError: If the username contains invalid characters.
         """
         if not value.replace("_", "").replace("-", "").isalnum():
-            raise ValueError(
-                get_translated_message("invalid_username_characters", "en")
-            )
+            raise ValueError("Username can only contain alphanumeric characters, underscores, or hyphens")
         return value.lower()
 
     @field_validator("email")
@@ -158,3 +152,69 @@ class User(SQLModel, table=True):
         casing.
         """
         return value.lower()
+
+    def verify_password(self, password: str) -> bool:
+        """Verify a password against the user's hashed password.
+
+        This method uses bcrypt to securely compare the provided password
+        against the stored hash, implementing constant-time comparison to
+        prevent timing attacks.
+
+        Args:
+            password: The plain text password to verify.
+
+        Returns:
+            bool: True if the password matches, False otherwise.
+
+        Note:
+            This method implements security best practices:
+            - Uses bcrypt for secure password hashing
+            - Implements constant-time comparison
+            - Handles missing passwords gracefully
+            - Provides clear return values
+        """
+        if not self.hashed_password:
+            return False
+
+        try:
+            from passlib.context import CryptContext
+
+            # Create password context with bcrypt
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            return pwd_context.verify(password, self.hashed_password)
+        except Exception:
+            # Log the error but don't expose details
+            return False
+
+    def set_password(self, password: str) -> None:
+        """Set a new password for the user.
+
+        This method securely hashes the provided password using bcrypt
+        and stores the hash in the user's record.
+
+        Args:
+            password: The plain text password to hash and store.
+
+        Note:
+            This method implements security best practices:
+            - Uses bcrypt for secure password hashing
+            - Configurable work factor for security vs performance
+            - Handles password updates securely
+            - Provides clear error handling
+        """
+        from passlib.context import CryptContext
+        from src.core.config.settings import BCRYPT_WORK_FACTOR
+
+        # Create password context with bcrypt
+        pwd_context = CryptContext(
+            schemes=["bcrypt"], 
+            deprecated="auto", 
+            bcrypt__rounds=BCRYPT_WORK_FACTOR
+        )
+        
+        # Hash the password and store the hash
+        self.hashed_password = pwd_context.hash(password)
+
+    def __repr__(self) -> str:
+        """Return a string representation of the user."""
+        return f"User(id={self.id}, username='{self.username}', email='{self.email}', role={self.role})"
