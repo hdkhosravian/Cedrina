@@ -8,6 +8,8 @@ import re
 import bcrypt
 from dataclasses import dataclass
 from typing import ClassVar, Optional
+from src.common.exceptions import PasswordPolicyError
+from src.common.i18n import get_translated_message
 
 
 def _hash_password(password: str) -> str:
@@ -127,6 +129,7 @@ class Password:
     """
     
     value: str
+    language: str = "en"
     
     # Security constraints as class constants
     MIN_LENGTH: ClassVar[int] = 8
@@ -145,33 +148,33 @@ class Password:
         """Validate password against all security requirements.
         
         Raises:
-            ValueError: If password doesn't meet security requirements
+            PasswordPolicyError: If password doesn't meet security requirements
         """
         if not self.value:
-            raise ValueError("Password cannot be empty")
+            raise PasswordPolicyError(get_translated_message("password_empty", self.language))
         
         if len(self.value) < self.MIN_LENGTH:
-            raise ValueError(f"Password must be at least {self.MIN_LENGTH} characters long")
+            raise PasswordPolicyError(get_translated_message("password_too_short", self.language).format(length=self.MIN_LENGTH))
         
         if len(self.value) > self.MAX_LENGTH:
-            raise ValueError(f"Password must not exceed {self.MAX_LENGTH} characters")
+            raise PasswordPolicyError(get_translated_message("password_too_long", self.language).format(max_length=self.MAX_LENGTH))
         
         # Check character requirements
         if not re.search(r"[A-Z]", self.value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            raise PasswordPolicyError(get_translated_message("password_no_uppercase", self.language))
         
         if not re.search(r"[a-z]", self.value):
-            raise ValueError("Password must contain at least one lowercase letter")
+            raise PasswordPolicyError(get_translated_message("password_no_lowercase", self.language))
         
         if not re.search(r"\d", self.value):
-            raise ValueError("Password must contain at least one digit")
+            raise PasswordPolicyError(get_translated_message("password_no_digit", self.language))
         
         if not any(char in self.SPECIAL_CHARS for char in self.value):
-            raise ValueError("Password must contain at least one special character")
+            raise PasswordPolicyError(get_translated_message("password_no_special_char", self.language))
         
         # Check for common weak patterns
         if self._contains_weak_patterns():
-            raise ValueError("Password contains common weak patterns")
+            raise PasswordPolicyError(get_translated_message("password_too_weak", self.language))
     
     def _contains_weak_patterns(self) -> bool:
         """Check for common weak password patterns.
@@ -254,9 +257,12 @@ class HashedPassword:
         if not self.value:
             raise ValueError("Hashed password cannot be empty")
         
-        # Basic bcrypt format validation
-        if not self.value.startswith("$2b$"):
-            raise ValueError("Invalid bcrypt hash format")
+        # Basic bcrypt or encrypted format validation
+        is_bcrypt = self.value.startswith("$2b$") and len(self.value) == 60
+        is_encrypted = self.value.startswith("enc_v1:") and len(self.value) > len("enc_v1:")
+
+        if not (is_bcrypt or is_encrypted):
+            raise ValueError("Invalid hashed password format")
     
     def verify_plain_password(self, plain_password: str) -> bool:
         """Verify a plain password against this hash.
@@ -346,6 +352,9 @@ class EncryptedPassword:
         Returns:
             EncryptedPassword: Encrypted password
         """
+        if hashed_password.is_encrypted():
+            return cls(encrypted_value=hashed_password.value)
+
         encrypted_value = await encryption_service.encrypt(hashed_password.value)
         return cls(encrypted_value=encrypted_value)
     

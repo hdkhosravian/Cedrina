@@ -50,7 +50,7 @@ class TestResetPasswordEndpoint:
         assert response.status_code == status.HTTP_200_OK
         response_data = response.json()
         assert "message" in response_data
-        assert response_data["message"] == "Password reset successfully"
+        assert response_data["message"] == "password_reset_successful"
         
         # Verify service was called with correct parameters
         mock_password_reset_service.reset_password.assert_called_once()
@@ -373,8 +373,8 @@ class TestResetPasswordEndpoint:
                 json=invalid_payload
             )
             
-            # Assert - Should return 422 for validation errors
-            assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+            # Assert - Should return 400 for domain validation errors
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     @pytest.mark.asyncio
     async def test_reset_password_internationalization_support(

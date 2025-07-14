@@ -94,8 +94,22 @@ async def forgot_password(
         success_message = get_translated_message("password_reset_email_sent", language)
         return MessageResponse(message=success_message)
         
-    except Exception as e:
-        # Handle authentication errors consistently
+    except EmailServiceError as e:
+        # Log email service error for monitoring but return success to prevent enumeration
+        request_logger.warning(
+            "Email service error during password reset request",
+            error_message=str(e),
+            email_masked=secure_logging_service.mask_email(payload.email),
+            security_enhanced=True
+        )
+        
+        # Return success message to prevent email enumeration attacks
+        language = extract_language_from_request(request)
+        success_message = get_translated_message("password_reset_email_sent", language)
+        return MessageResponse(message=success_message)
+        
+    except (RateLimitExceededError, ForgotPasswordError) as e:
+        # Known domain errors should be handled by the error handler
         context_info = {
             "email_masked": secure_logging_service.mask_email(payload.email)
         }
@@ -106,4 +120,15 @@ async def forgot_password(
             request=request,
             correlation_id=correlation_id,
             context_info=context_info
-        ) 
+        )
+    except Exception as e:
+        # Log unexpected errors and return generic success to prevent information leakage
+        request_logger.error(
+            "Unexpected error during password reset request",
+            error_message=str(e),
+            email_masked=secure_logging_service.mask_email(payload.email),
+            security_enhanced=True
+        )
+        language = extract_language_from_request(request)
+        success_message = get_translated_message("password_reset_email_sent", language)
+        return MessageResponse(message=success_message) 

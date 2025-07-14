@@ -4,7 +4,6 @@ This module handles the configuration and registration of all middleware
 components including CORS, rate limiting, and language handling.
 """
 
-import i18n
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
@@ -57,7 +56,6 @@ async def set_language_middleware(request: Request, call_next):
     """
     # Extract language from request for I18N
     lang = extract_language_from_request(request)
-    i18n.set("locale", lang)
     request.state.language = lang
     response = await call_next(request)
     response.headers["Content-Language"] = lang

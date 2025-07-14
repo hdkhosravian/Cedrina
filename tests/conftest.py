@@ -27,6 +27,19 @@ from src.infrastructure.redis import get_redis
 import redis.asyncio as aioredis
 from sqlalchemy import text
 
+# Import and initialize I18N for tests to match production environment
+from src.common.i18n import setup_i18n
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_i18n_for_tests():
+    """Initialize I18N system for tests to ensure test, dev, and production environments are identical."""
+    # Get the absolute path to the locales directory
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    locales_path = os.path.join(base_dir, "locales")
+    
+    # Initialize I18N with the same settings as production
+    setup_i18n(locales_path, settings.SUPPORTED_LANGUAGES, 'en')
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():

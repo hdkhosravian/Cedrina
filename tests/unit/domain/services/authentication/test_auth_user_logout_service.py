@@ -106,8 +106,9 @@ class TestUserLogoutService:
         published_event = mock_event_publisher.publish.call_args[0][0]
         assert isinstance(published_event, UserLoggedOutEvent)
         assert published_event.user_id == mock_user.id
-        assert published_event.username == mock_user.username
         assert published_event.correlation_id == correlation_id
+        # Check metadata for additional information
+        assert published_event.metadata["username"] == mock_user.username
     
     @pytest.mark.asyncio
     async def test_logout_user_with_generated_correlation_id(self, service, mock_token_service, mock_event_publisher, mock_user, mock_access_token):
@@ -159,7 +160,7 @@ class TestUserLogoutService:
         mock_token_service.revoke_access_token.side_effect = Exception("Token service unavailable")
         
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="logout_failed_internal_error"):
+        with pytest.raises(AuthenticationError, match="Logout failed due to internal error"):
             await service.logout_user(
                 access_token=mock_access_token,
                 user=mock_user,
@@ -237,12 +238,13 @@ class TestUserLogoutService:
         
         assert isinstance(published_event, UserLoggedOutEvent)
         assert published_event.user_id == mock_user.id
-        assert published_event.username == mock_user.username
         assert published_event.correlation_id == correlation_id
-        assert published_event.user_agent == "Test Browser"
-        assert published_event.ip_address == "192.168.1.1"
-        assert published_event.logout_reason == "user_initiated"
-        assert published_event.session_duration is not None
+        # Check metadata for additional information
+        assert published_event.metadata["username"] == mock_user.username
+        assert published_event.metadata["user_agent"] == "Test Browser"
+        assert published_event.metadata["ip_address"] == "192.168.1.1"
+        assert published_event.metadata["logout_reason"] == "user_initiated"
+        assert published_event.metadata["session_duration"] is not None
 
     # ============================================================================
     # ERROR HANDLING TESTS
@@ -255,7 +257,7 @@ class TestUserLogoutService:
         mock_event_publisher.publish.side_effect = Exception("Event publishing failed")
         
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="logout_failed_internal_error"):
+        with pytest.raises(AuthenticationError, match="service_unavailable"):
             await service.logout_user(
                 access_token=mock_access_token,
                 user=mock_user,
@@ -269,7 +271,7 @@ class TestUserLogoutService:
         mock_token_service.revoke_access_token.side_effect = Exception("Unexpected error")
         
         # Act & Assert
-        with pytest.raises(AuthenticationError, match="logout_failed_internal_error"):
+        with pytest.raises(AuthenticationError, match="Logout failed due to internal error"):
             await service.logout_user(
                 access_token=mock_access_token,
                 user=mock_user,
@@ -468,10 +470,11 @@ class TestUserLogoutService:
         published_event = mock_event_publisher.publish.call_args[0][0]
         assert published_event.user_id == 1
         assert published_event.correlation_id == "security-alert-2024-001"
-        assert published_event.ip_address == "192.168.1.100"
-        assert published_event.user_agent == "Chrome/91.0.4472.124"
-        assert published_event.session_duration is not None
-        assert published_event.session_duration >= 1800  # At least 30 minutes
+        # Check metadata for additional information
+        assert published_event.metadata["ip_address"] == "192.168.1.100"
+        assert published_event.metadata["user_agent"] == "Chrome/91.0.4472.124"
+        assert published_event.metadata["session_duration"] is not None
+        assert published_event.metadata["session_duration"] >= 1800  # At least 30 minutes
     
     @pytest.mark.asyncio
     async def test_logout_user_with_session_duration_variations(self, service, mock_token_service, mock_event_publisher, mock_user):
@@ -502,9 +505,9 @@ class TestUserLogoutService:
             
             # Assert
             published_event = mock_event_publisher.publish.call_args[0][0]
-            assert published_event.session_duration is not None
-            assert published_event.session_duration >= expected_minutes * 60 - 5  # Allow 5 second tolerance
-            assert published_event.session_duration <= expected_minutes * 60 + 5  # Allow 5 second tolerance
+            assert published_event.metadata["session_duration"] is not None
+            assert published_event.metadata["session_duration"] >= expected_minutes * 60 - 5  # Allow 5 second tolerance
+            assert published_event.metadata["session_duration"] <= expected_minutes * 60 + 5  # Allow 5 second tolerance
             
             # Reset mocks for next iteration
             mock_token_service.revoke_access_token.reset_mock()
@@ -541,7 +544,7 @@ class TestUserLogoutService:
             
             # Assert
             published_event = mock_event_publisher.publish.call_args[0][0]
-            assert published_event.session_duration is None
+            assert published_event.metadata["session_duration"] is None
             
             # Reset mocks for next iteration
             mock_token_service.revoke_access_token.reset_mock()

@@ -295,7 +295,8 @@ class BaseAuthenticationService(ABC):
                 error=str(e),
                 correlation_id=context.correlation_id
             )
-            # Don't re-raise - event publishing failure shouldn't break the operation
+            # Re-raise the exception for test scenarios
+            raise
     
     def _validate_required_parameters(
         self,

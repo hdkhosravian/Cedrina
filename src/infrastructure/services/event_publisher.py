@@ -75,14 +75,13 @@ class InMemoryEventPublisher(IEventPublisher, BaseInfrastructureService):
                 event_type=event_type,
                 user_id=getattr(event, 'user_id', None),
                 correlation_id=getattr(event, 'correlation_id', None),
-                occurred_at=event.occurred_at.isoformat(),
+                occurred_at=event.timestamp.isoformat(),
             )
             
         except Exception as e:
             raise self._handle_infrastructure_error(
                 error=e,
                 operation=operation,
-                event_type=type(event).__name__,
             )
             # Don't re-raise to prevent domain operations from failing
             # due to event publishing issues
@@ -113,7 +112,6 @@ class InMemoryEventPublisher(IEventPublisher, BaseInfrastructureService):
             raise self._handle_infrastructure_error(
                 error=e,
                 operation=operation,
-                event_count=len(events),
             )
     
     def add_event_filter(self, event_type: str) -> None:
@@ -293,7 +291,6 @@ class ProductionEventPublisher(IEventPublisher, BaseInfrastructureService):
             raise self._handle_infrastructure_error(
                 error=e,
                 operation=operation,
-                event_type=type(event).__name__,
             )
     
     async def publish_many(self, events: List[BaseDomainEvent]) -> None:

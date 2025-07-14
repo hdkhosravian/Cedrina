@@ -98,7 +98,7 @@ async def login_user(
         )
 
         # Generate JWT tokens for authenticated session using utility function
-        tokens = await create_token_pair(token_service, user)
+        tokens = await create_token_pair(token_service, user, correlation_id)
         
         request_logger.info(
             "Authentication tokens created",

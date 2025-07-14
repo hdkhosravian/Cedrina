@@ -12,6 +12,11 @@ from src.domain.entities.user import User
 from src.domain.entities.oauth_profile import OAuthProfile
 from src.domain.value_objects.username import Username
 from src.domain.value_objects.oauth_provider import OAuthProvider
+from src.domain.events.authentication_events import (
+    UserLoggedInEvent,
+    AuthenticationFailedEvent,
+    UserLoggedOutEvent
+)
 from src.common.events import IEventPublisher
 from .context import AuthenticationContext
 
@@ -44,17 +49,16 @@ class AuthenticationEventHandler:
         """
         # Publish success event
         if self._event_publisher:
-            await self._event_publisher.publish(
-                "UserLoggedInEvent",
-                {
-                    "user_id": user.id,
-                    "username": user.username,
-                    "correlation_id": context.correlation_id,
+            event = UserLoggedInEvent.create(
+                user_id=user.id,
+                email=user.email,
+                correlation_id=context.correlation_id,
+                metadata={
                     "client_ip": context.client_ip,
-                    "user_agent": context.user_agent,
-                    "timestamp": time.time()
+                    "user_agent": context.user_agent
                 }
             )
+            await self._event_publisher.publish(event)
         
         # Log security event
         self._secure_logger.log_authentication_attempt(
@@ -87,17 +91,16 @@ class AuthenticationEventHandler:
         """
         # Publish failure event
         if self._event_publisher:
-            await self._event_publisher.publish(
-                "AuthenticationFailedEvent",
-                {
-                    "username": str(username),
-                    "failure_reason": failure_reason,
-                    "correlation_id": context.correlation_id,
+            event = AuthenticationFailedEvent.create(
+                reason=failure_reason,
+                email=str(username),
+                correlation_id=context.correlation_id,
+                metadata={
                     "client_ip": context.client_ip,
-                    "user_agent": context.user_agent,
-                    "timestamp": time.time()
+                    "user_agent": context.user_agent
                 }
             )
+            await self._event_publisher.publish(event)
         
         # Log security event
         self._secure_logger.log_authentication_attempt(
@@ -129,20 +132,20 @@ class AuthenticationEventHandler:
             oauth_profile: OAuth profile
             context: Authentication context
         """
-        # Publish success event
+        # Publish success event (using UserLoggedInEvent for OAuth as well)
         if self._event_publisher:
-            await self._event_publisher.publish(
-                "OAuthAuthenticationSuccessEvent",
-                {
-                    "user_id": user.id,
+            event = UserLoggedInEvent.create(
+                user_id=user.id,
+                email=user.email,
+                correlation_id=context.correlation_id,
+                metadata={
                     "oauth_profile_id": oauth_profile.id,
                     "provider": oauth_profile.provider,
-                    "correlation_id": context.correlation_id,
                     "client_ip": context.client_ip,
-                    "user_agent": context.user_agent,
-                    "timestamp": time.time()
+                    "user_agent": context.user_agent
                 }
             )
+            await self._event_publisher.publish(event)
         
         logger.info(
             "OAuth authentication successful",
@@ -166,17 +169,16 @@ class AuthenticationEventHandler:
         """
         # Publish failure event
         if self._event_publisher:
-            await self._event_publisher.publish(
-                "OAuthAuthenticationFailedEvent",
-                {
+            event = AuthenticationFailedEvent.create(
+                reason=failure_reason,
+                correlation_id=context.correlation_id,
+                metadata={
                     "provider": provider.value,
-                    "failure_reason": failure_reason,
-                    "correlation_id": context.correlation_id,
                     "client_ip": context.client_ip,
-                    "user_agent": context.user_agent,
-                    "timestamp": time.time()
+                    "user_agent": context.user_agent
                 }
             )
+            await self._event_publisher.publish(event)
         
         logger.warning(
             "OAuth authentication failed",

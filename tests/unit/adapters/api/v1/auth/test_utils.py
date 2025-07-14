@@ -50,7 +50,7 @@ class TestCreateTokenPair:
     async def test_creates_token_pair_with_secure_jti(self, mock_token_service, test_user):
         """Test that create_token_pair uses the new domain service interface."""
         # Create token pair
-        result = await create_token_pair(mock_token_service, test_user)
+        result = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
 
         # Verify the new method was called
         mock_token_service.create_token_pair_with_family_security.assert_called_once()
@@ -65,7 +65,7 @@ class TestCreateTokenPair:
     async def test_uses_token_id_generate_method(self, mock_token_service, test_user):
         """Test that the function uses the new domain service interface."""
         # Create token pair
-        await create_token_pair(mock_token_service, test_user)
+        await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
 
         # Verify the new method was called with correct parameters
         call_args = mock_token_service.create_token_pair_with_family_security.call_args
@@ -79,7 +79,7 @@ class TestCreateTokenPair:
     async def test_expires_in_validation(self, mock_token_service, test_user):
         """Test that expiration time is properly validated and set."""
         # Test with normal settings
-        result = await create_token_pair(mock_token_service, test_user)
+        result = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
         expected_expires = max(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, 60)
         assert result.expires_in == expected_expires
 
@@ -88,7 +88,7 @@ class TestCreateTokenPair:
         try:
             # Temporarily set to 0 to test minimum validation
             settings.ACCESS_TOKEN_EXPIRE_MINUTES = 0
-            result = await create_token_pair(mock_token_service, test_user)
+            result = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
             assert result.expires_in == 60, "Should enforce minimum 60-second expiration"
         finally:
             # Restore original setting
@@ -98,8 +98,8 @@ class TestCreateTokenPair:
     async def test_jti_uniqueness_across_calls(self, mock_token_service, test_user):
         """Test that each call generates a unique token pair."""
         # Create multiple token pairs
-        result1 = await create_token_pair(mock_token_service, test_user)
-        result2 = await create_token_pair(mock_token_service, test_user)
+        result1 = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
+        result2 = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
 
         # Verify the method was called twice
         assert mock_token_service.create_token_pair_with_family_security.call_count == 2
@@ -107,7 +107,7 @@ class TestCreateTokenPair:
     @pytest.mark.asyncio
     async def test_token_service_called_with_correct_parameters(self, mock_token_service, test_user):
         """Test that token service methods are called with correct parameters."""
-        await create_token_pair(mock_token_service, test_user)
+        await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
 
         # Verify the new method was called
         call_args = mock_token_service.create_token_pair_with_family_security.call_args
@@ -121,7 +121,7 @@ class TestCreateTokenPair:
     @pytest.mark.asyncio
     async def test_returns_correct_token_pair_structure(self, mock_token_service, test_user):
         """Test that the function returns the expected TokenPair structure."""
-        result = await create_token_pair(mock_token_service, test_user)
+        result = await create_token_pair(mock_token_service, test_user, 'test-correlation-id')
 
         # Verify all required fields are present
         assert hasattr(result, "access_token")

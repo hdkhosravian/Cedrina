@@ -431,6 +431,8 @@ class UserRepository(IUserRepository):
             # Commit transaction and refresh entity
             await self.db_session.commit()
             await self.db_session.refresh(user)
+            # Ensure email is loaded after refresh
+            _ = user.email
 
             logger.info(
                 "User saved successfully",

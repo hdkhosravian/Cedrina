@@ -34,7 +34,7 @@ from .base_events import (
 
 
 @dataclass(frozen=True)
-class OAuthAuthenticationSuccessEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin):
+class OAuthAuthenticationSuccessEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin, EmailEventMixin):
     """Domain event published when OAuth authentication succeeds."""
     
     provider: str
@@ -56,6 +56,7 @@ class OAuthAuthenticationSuccessEvent(BaseDomainEvent, UserEventMixin, SecurityE
         user_id: int,
         email: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "OAuthAuthenticationSuccessEvent":
         """Create a new OAuth authentication success event."""
@@ -64,12 +65,13 @@ class OAuthAuthenticationSuccessEvent(BaseDomainEvent, UserEventMixin, SecurityE
             user_id=user_id,
             email=email,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class OAuthAuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin):
+class OAuthAuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin, UserEventMixin):
     """Domain event published when OAuth authentication fails."""
     
     provider: str
@@ -94,6 +96,7 @@ class OAuthAuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin):
         error_description: str,
         user_id: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "OAuthAuthenticationFailedEvent":
         """Create a new OAuth authentication failed event."""
@@ -103,12 +106,13 @@ class OAuthAuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin):
             error_description=error_description,
             user_id=user_id,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class OAuthProfileCreatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin):
+class OAuthProfileCreatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin, StringValidationMixin, EmailEventMixin):
     """Domain event published when an OAuth profile is created."""
     
     user_id: int
@@ -133,6 +137,7 @@ class OAuthProfileCreatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMix
         provider_user_id: str,
         email: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "OAuthProfileCreatedEvent":
         """Create a new OAuth profile created event."""
@@ -142,12 +147,13 @@ class OAuthProfileCreatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMix
             provider_user_id=provider_user_id,
             email=email,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class OAuthProfileUpdatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin):
+class OAuthProfileUpdatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin, StringValidationMixin, EmailEventMixin):
     """Domain event published when an OAuth profile is updated."""
     
     user_id: int
@@ -172,6 +178,7 @@ class OAuthProfileUpdatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMix
         provider_user_id: str,
         email: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "OAuthProfileUpdatedEvent":
         """Create a new OAuth profile updated event."""
@@ -181,12 +188,13 @@ class OAuthProfileUpdatedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMix
             provider_user_id=provider_user_id,
             email=email,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class OAuthProfileLinkedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin):
+class OAuthProfileLinkedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixin, StringValidationMixin, EmailEventMixin):
     """Domain event published when an OAuth profile is linked to a user."""
     
     user_id: int
@@ -211,6 +219,7 @@ class OAuthProfileLinkedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixi
         provider_user_id: str,
         email: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "OAuthProfileLinkedEvent":
         """Create a new OAuth profile linked event."""
@@ -220,5 +229,6 @@ class OAuthProfileLinkedEvent(BaseDomainEvent, UserEventMixin, SecurityEventMixi
             provider_user_id=provider_user_id,
             email=email,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         ) 

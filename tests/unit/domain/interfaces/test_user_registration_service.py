@@ -225,7 +225,7 @@ class TestUserRegistrationServiceInterface:
         sig = inspect.signature(IUserRegistrationService.register_user)
         security_param = sig.parameters['security_context']
         assert security_param.annotation == SecurityContext
-        assert not security_param.default  # Required parameter
+        assert security_param.default is inspect._empty  # Required parameter
 
     def test_interface_value_object_validation(self):
         """Test that interface uses value objects for input validation."""
@@ -262,8 +262,8 @@ class TestUserRegistrationServiceInterface:
         # This is tested through the async method signatures
         import inspect
         
-        sig = inspect.signature(IUserRegistrationService.register_user)
-        assert 'async' in str(sig)  # Method should be async for concurrency
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserRegistrationService.register_user)
 
     def test_interface_high_traffic_support(self):
         """Test that interface supports high-traffic scenarios."""
@@ -271,8 +271,8 @@ class TestUserRegistrationServiceInterface:
         # This is tested through the async method signatures and proper error handling
         import inspect
         
-        sig = inspect.signature(IUserRegistrationService.register_user)
-        assert 'async' in str(sig)  # Async for high traffic support
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserRegistrationService.register_user)
         
         # Should document rate limiting considerations
         doc = IUserRegistrationService.register_user.__doc__.lower()
@@ -322,8 +322,9 @@ class TestUserRegistrationServiceInterface:
         
         import inspect
         
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserRegistrationService.register_user)
         sig = inspect.signature(IUserRegistrationService.register_user)
-        assert 'async' in str(sig)  # Scalability
         assert 'security_context' in sig.parameters  # Audit trails
         assert sig.parameters['username'].annotation == Username  # Validation
         assert sig.parameters['email'].annotation == Email  # Validation
@@ -344,11 +345,11 @@ class TestUserRegistrationServiceInterface:
         # These methods should be async for high-traffic scenarios
         import inspect
         
-        sig = inspect.signature(IUserRegistrationService.check_username_availability)
-        assert 'async' in str(sig)
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserRegistrationService.check_username_availability)
         
         sig = inspect.signature(IUserRegistrationService.check_email_availability)
-        assert 'async' in str(sig)
+        assert inspect.iscoroutinefunction(IUserRegistrationService.check_email_availability)
 
     def test_interface_validation_scenarios(self):
         """Test that interface handles validation scenarios appropriately."""
@@ -371,8 +372,8 @@ class TestUserRegistrationServiceInterface:
         # Interface should handle concurrent registrations through async design
         import inspect
         
-        sig = inspect.signature(IUserRegistrationService.register_user)
-        assert 'async' in str(sig)  # Async for concurrent access
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserRegistrationService.register_user)
         
         # Should document concurrent access considerations
         doc = IUserRegistrationService.register_user.__doc__.lower()

@@ -79,7 +79,7 @@ async def reset_password(
             token=payload.token,
             new_password=payload.new_password,
             language=language,
-            client_ip=client_ip,
+            ip_address=client_ip,
             user_agent=user_agent,
             correlation_id=correlation_id,
         )

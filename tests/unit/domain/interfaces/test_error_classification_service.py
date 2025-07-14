@@ -135,7 +135,7 @@ class TestErrorClassificationServiceInterface:
         sig = inspect.signature(IErrorClassificationService.classify_error)
         error_param = sig.parameters['error']
         assert error_param.annotation == Exception
-        assert not error_param.default  # Required parameter
+        assert error_param.default is inspect._empty  # Required parameter
 
     def test_interface_domain_exception_output(self):
         """Test that interface uses domain exceptions for output."""

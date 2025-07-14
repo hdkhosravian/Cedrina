@@ -6,6 +6,7 @@ This module provides shared helper functions to ensure consistency and reduce
 duplication across authentication endpoints like login, register, and OAuth.
 """
 
+import asyncio
 import uuid
 from typing import Dict, Any, Optional
 
@@ -181,30 +182,39 @@ async def handle_authentication_error(
         log_context.update(context_info)
     
     # Handle domain-specific exceptions that should be re-raised as-is
-    from src.common.exceptions import DuplicateUserError, PasswordPolicyError
+    from src.common.exceptions import (
+        DuplicateUserError, PasswordPolicyError, UserNotFoundError,
+        PasswordResetError, ForgotPasswordError, RateLimitExceededError
+    )
     
-    if isinstance(error, (DuplicateUserError, PasswordPolicyError)):
+    if isinstance(error, (DuplicateUserError, PasswordPolicyError, UserNotFoundError, PasswordResetError, ForgotPasswordError, RateLimitExceededError)):
         # Log the domain-specific error with security context
         request_logger.warning(
-            "Registration failed - domain error",
+            "Authentication failed - domain error",
             error_message=str(error),
             **log_context
         )
         # Re-raise domain exceptions as-is for proper HTTP status codes
-        return error
+        raise error
     
     if isinstance(error, (ValueError, AuthenticationError)):
         # Classify error for consistent response format
-        classified_error = await error_classification_service.classify_error(error)
-        
+        try:
+            if asyncio.iscoroutinefunction(error_classification_service.classify_error):
+                classified_error = await error_classification_service.classify_error(error)
+            else:
+                classified_error = error_classification_service.classify_error(error)
+        except Exception as classification_error:
+            # Fallback to original error if classification fails
+            classified_error = error
+            
         # Log the error with security context
         request_logger.warning(
             "Authentication failed",
             error_message=str(classified_error),
             **log_context
         )
-        
-        return classified_error
+        raise classified_error
     else:
         # Log unexpected errors for debugging
         request_logger.error(
@@ -220,7 +230,7 @@ async def handle_authentication_error(
             correlation_id=correlation_id,
             language=language
         )
-        return AuthenticationError(standardized_response["detail"])
+        raise AuthenticationError(standardized_response["detail"])
 
 
 def create_request_logger(

@@ -56,7 +56,7 @@ class IUserAuthenticationService(ABC):
         Args:
             username: The validated and normalized `Username` value object.
             password: The validated `LoginPassword` value object (minimal validation).
-            security_context: Validated security context for audit trails.
+            security_context: Validated security context for audit trails. (Required)
             language: The language for error messages (i18n).
 
         Returns:

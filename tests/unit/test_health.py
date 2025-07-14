@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.testclient import TestClient
+
 
 from src.core.config.settings import settings
 from src.core.dependencies.auth import get_current_user
@@ -26,6 +26,11 @@ def client():
     mock_admin_user.role = Role.ADMIN
     mock_admin_user.is_active = True
 
+    # Create a copy of the settings and set the APP_ENV to "test"
+    test_settings = settings.copy()
+    test_settings.APP_ENV = "test"
+    app.state.settings = test_settings
+
     app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -39,9 +44,9 @@ def client():
         ("ar", "النظام يعمل"),
     ],
 )
-def test_health_check(client, lang, expected_message, monkeypatch):
+def test_health_check(client, lang, expected_message):
     """Test health check endpoint with different languages."""
-    monkeypatch.setattr(settings, "APP_ENV", "test")
+
     headers = {
         "Accept-Language": lang,
     }
@@ -56,9 +61,9 @@ def test_health_check(client, lang, expected_message, monkeypatch):
     assert json_response["services"]["database"]["status"] == "healthy"
 
 
-def test_health_check_default_language(client, monkeypatch):
+def test_health_check_default_language(client):
     """Test health check endpoint with default language."""
-    monkeypatch.setattr(settings, "APP_ENV", "test")
+
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     json_response = response.json()
@@ -72,9 +77,9 @@ def test_health_check_default_language(client, monkeypatch):
     assert json_response["services"]["database"]["status"] == "healthy"
 
 
-def test_health_check_invalid_language(client, monkeypatch):
+def test_health_check_invalid_language(client):
     """Test health check endpoint with invalid language falls back to default."""
-    monkeypatch.setattr(settings, "APP_ENV", "test")
+
     headers = {
         "Accept-Language": "invalid",
     }

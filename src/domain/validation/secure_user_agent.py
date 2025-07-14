@@ -93,7 +93,7 @@ class SecureUserAgent:
         
         # Log security violations for monitoring
         if validation_result.violations:
-            logger.security_warning(
+            logger.warning(
                 "User agent security violations detected",
                 original_length=len(self.value) if hasattr(self, 'value') else 0,
                 sanitized_length=len(validation_result.sanitized_value),

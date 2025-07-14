@@ -110,6 +110,11 @@ class TokenFamily:
         return self._status
     
     @property
+    def status_enum(self) -> TokenFamilyStatus:
+        """Get family status enum (alias for status property)."""
+        return self._status
+    
+    @property
     def created_at(self) -> datetime:
         """Get creation timestamp."""
         return self._created_at

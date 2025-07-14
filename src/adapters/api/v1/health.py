@@ -96,7 +96,7 @@ async def health_check(request: Request):
 
     return HealthResponse(
         status=overall_status,
-        env=settings.APP_ENV,
+        env=request.app.state.settings.APP_ENV,
         message=status_message,
         services={"redis": redis_health, "database": db_health},
         timestamp=datetime.now(timezone.utc),

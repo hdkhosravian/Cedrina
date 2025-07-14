@@ -204,7 +204,7 @@ class PasswordChangeService(IPasswordChangeService, BaseAuthenticationService):
         Raises:
             InvalidOldPasswordError: If old password is incorrect
         """
-        if not user.verify_password(str(old_password)):
+        if not user.verify_password(old_password.value):
             logger.warning(
                 "Password change failed - invalid old password",
                 username=user.username[:3] + "***" if user.username else "unknown",
@@ -273,13 +273,20 @@ class PasswordChangeService(IPasswordChangeService, BaseAuthenticationService):
             user: User who changed password
             context: Service context
         """
-        event = PasswordChangedEvent(
+        # Create metadata with additional context information
+        metadata = {
+            "username": user.username,
+            "user_agent": context.user_agent,
+            "ip_address": context.client_ip,
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "change_method": "self_service",
+            "forced_change": False
+        }
+        
+        event = PasswordChangedEvent.create(
             user_id=user.id,
-            username=user.username,
             correlation_id=context.correlation_id,
-            user_agent=context.user_agent,
-            ip_address=context.client_ip,
-            changed_at=datetime.now(timezone.utc)
+            metadata=metadata
         )
         
         await self._publish_domain_event(event, context, logger)

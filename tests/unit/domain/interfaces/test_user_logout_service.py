@@ -164,7 +164,7 @@ class TestUserLogoutServiceInterface:
         sig = inspect.signature(IUserLogoutService.logout_user)
         security_param = sig.parameters['security_context']
         assert security_param.annotation == SecurityContext
-        assert not security_param.default  # Required parameter
+        assert security_param.default is inspect._empty  # Required parameter
 
     def test_interface_value_object_validation(self):
         """Test that interface uses value objects for input validation."""
@@ -196,18 +196,18 @@ class TestUserLogoutServiceInterface:
         # Interface should be designed for concurrent access
         # This is tested through the async method signatures
         import inspect
-        
-        sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'async' in str(sig)  # Method should be async for concurrency
+
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserLogoutService.logout_user)
 
     def test_interface_high_traffic_support(self):
         """Test that interface supports high-traffic scenarios."""
         # Interface should be designed for high traffic
         # This is tested through the async method signatures and proper error handling
         import inspect
-        
-        sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'async' in str(sig)  # Async for high traffic support
+
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserLogoutService.logout_user)
         
         # Should document rate limiting considerations
         doc = IUserLogoutService.logout_user.__doc__.lower()
@@ -250,11 +250,12 @@ class TestUserLogoutServiceInterface:
         # 4. Proper error handling
         # 5. Internationalization support
         # 6. Token revocation
-        
+
         import inspect
-        
+
+        # Use iscoroutinefunction to check for async
+        assert inspect.iscoroutinefunction(IUserLogoutService.logout_user)
         sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'async' in str(sig)  # Scalability
         assert 'security_context' in sig.parameters  # Audit trails
         assert sig.parameters['access_token'].annotation == AccessToken  # Validation
         assert sig.parameters['user'].annotation == User  # Validation

@@ -44,7 +44,7 @@ class IPasswordResetTokenService(ABC):
     """
 
     @abstractmethod
-    async def generate_token(self, user: User) -> ResetToken:
+    async def generate_token(self, user: User, security_context: SecurityContext) -> ResetToken:
         """Generates a secure, unique password reset token for a user.
 
         This method should create a cryptographically strong token, associate it
@@ -53,6 +53,7 @@ class IPasswordResetTokenService(ABC):
 
         Args:
             user: The `User` entity for whom to generate the token.
+            security_context: Security context for audit trails and rate limiting.
 
         Returns:
             A `ResetToken` value object containing the token and its metadata.
@@ -60,11 +61,12 @@ class IPasswordResetTokenService(ABC):
         Raises:
             RateLimitExceededError: If the user has requested too many tokens
                 in a short period.
+            ValidationError: If the user or security context is invalid.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def validate_token(self, user: User, token: str) -> bool:
+    async def validate_token(self, user: User, token: str, security_context: SecurityContext) -> bool:
         """Validates a password reset token provided by a user.
 
         This method should compare the provided token against the stored token
@@ -74,6 +76,7 @@ class IPasswordResetTokenService(ABC):
         Args:
             user: The `User` entity associated with the token.
             token: The raw password reset token from the user.
+            security_context: Security context for audit trails.
 
         Returns:
             `True` if the token is valid, `False` otherwise.
@@ -81,7 +84,7 @@ class IPasswordResetTokenService(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def invalidate_token(self, user: User, reason: str = "used") -> None:
+    async def invalidate_token(self, user: User, security_context: SecurityContext, reason: str = "used") -> None:
         """Invalidates a user's password reset token.
 
         This should be called after a successful password reset to ensure the
@@ -89,17 +92,19 @@ class IPasswordResetTokenService(ABC):
 
         Args:
             user: The `User` entity whose token should be invalidated.
+            security_context: Security context for audit trails.
             reason: A string indicating why the token is being invalidated
                 (e.g., "used", "expired").
         """
         raise NotImplementedError
 
     @abstractmethod
-    def is_token_expired(self, user: User) -> bool:
+    async def is_token_expired(self, user: User, security_context: SecurityContext) -> bool:
         """Checks if a user's password reset token has expired.
 
         Args:
             user: The `User` entity to check.
+            security_context: Security context for audit trails.
 
         Returns:
             `True` if the token is expired, `False` otherwise.
@@ -124,13 +129,14 @@ class IPasswordResetEmailService(ABC):
 
     @abstractmethod
     async def send_password_reset_email(
-        self, user: User, token: ResetToken, language: str = "en"
+        self, user: User, token: ResetToken, security_context: SecurityContext, language: str = "en"
     ) -> bool:
         """Sends a password reset email to the user.
 
         Args:
             user: The `User` entity to whom the email will be sent.
             token: The `ResetToken` to be included in the email link.
+            security_context: Security context for audit trails.
             language: The preferred language for the email template.
 
         Returns:
@@ -138,6 +144,7 @@ class IPasswordResetEmailService(ABC):
 
         Raises:
             EmailDeliveryError: If email delivery fails
+            ValidationError: If the user, token, or security context is invalid.
         """
         raise NotImplementedError
 
@@ -160,6 +167,7 @@ class IPasswordResetRequestService(ABC):
     async def request_password_reset(
         self,
         email: EmailStr,
+        security_context: SecurityContext,
         language: str = "en",
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
@@ -176,6 +184,7 @@ class IPasswordResetRequestService(ABC):
         
         Args:
             email: Email address to send password reset to
+            security_context: Security context for audit trails and rate limiting
             language: Language code for email localization
             user_agent: Optional user agent for security tracking
             ip_address: Optional IP address for security tracking
@@ -188,6 +197,7 @@ class IPasswordResetRequestService(ABC):
             RateLimitExceededError: If rate limit is exceeded
             EmailServiceError: If email delivery fails
             ForgotPasswordError: For other operational errors
+            ValidationError: If the email or security context is invalid.
         """
         raise NotImplementedError
 
@@ -203,7 +213,7 @@ class IPasswordResetService(ABC):
     - Single Responsibility: Handles only password reset execution
     - Ubiquitous Language: Method names reflect business concepts
     - Domain Events: Publishes events for audit trails and security monitoring
-    - Fail-Safe Security: Implements token validation and password strength checks
+    - Fail-Safe Security: Implements secure token validation and password updates
     """
 
     @abstractmethod
@@ -211,6 +221,7 @@ class IPasswordResetService(ABC):
         self,
         token: str,
         new_password: str,
+        security_context: SecurityContext,
         language: str = "en",
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
@@ -219,16 +230,17 @@ class IPasswordResetService(ABC):
         """Reset user password using a valid token.
         
         This method handles the complete password reset execution workflow:
-        1. Validate token format
-        2. Find user by token
-        3. Validate token against user
-        4. Validate new password strength
-        5. Update password and invalidate token
+        1. Validate the reset token
+        2. Check token expiration
+        3. Validate new password strength
+        4. Update user password
+        5. Invalidate the token
         6. Publish domain events
         
         Args:
-            token: Password reset token
-            new_password: New password to set
+            token: The password reset token from the user
+            new_password: The new password to set
+            security_context: Security context for audit trails and validation
             language: Language code for error messages
             user_agent: Optional user agent for security tracking
             ip_address: Optional IP address for security tracking
@@ -238,8 +250,9 @@ class IPasswordResetService(ABC):
             Dict containing success message and status
             
         Raises:
-            PasswordResetError: If token is invalid, expired, or password is weak
+            PasswordResetError: If password reset fails
             UserNotFoundError: If user associated with token is not found
             ForgotPasswordError: For other operational errors
+            ValidationError: If the token, password, or security context is invalid.
         """
         raise NotImplementedError 

@@ -388,3 +388,17 @@ msgstr "La creación de la sesión falló debido a un error interno"
 msgid "session_limit_exceeded"
 msgstr "Se ha superado el número máximo de sesiones concurrentes"
 
+# Password policy validation messages (2025-07-13)
+
+msgid "password_empty"
+msgstr "La contraseña no puede estar vacía"
+
+msgid "password_too_long"
+msgstr "La contraseña debe tener como máximo {max_length} caracteres"
+
+msgid "token_validation_infrastructure_error"
+msgstr "Error de infraestructura en la validación del token"
+
+msgid "validate_access_token_infrastructure_error"
+msgstr "Token no válido"
+

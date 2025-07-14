@@ -378,6 +378,16 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             )
             raise
     
+    async def get_by_family_id(self, family_id: str) -> Optional[TokenFamily]:
+        """Fetch a token family by its family_id."""
+        result = await self.db_session.execute(
+            select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
+        )
+        model = result.scalars().first()
+        if model:
+            return await self._to_domain(model)
+        return None
+    
     async def get_family_by_token(self, token_id: TokenId) -> Optional[TokenFamily]:
         """
         Get token family by token ID.
@@ -459,19 +469,35 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             DatabaseError: If database operation fails
         """
         try:
+            # Find existing model first
+            result = await self.db_session.execute(
+                select(TokenFamilyModel).where(TokenFamilyModel.family_id == token_family.family_id)
+            )
+            existing_model = result.scalars().first()
+            
+            if not existing_model:
+                raise ValueError(f"Token family {token_family.family_id} not found for update")
+            
             # Map domain entity to ORM model
-            model = self._to_model(token_family)
+            updated_model = await self._to_model(token_family)
             
-            # Update last_used_at timestamp
-            model.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            # Update existing model with new values
+            existing_model.status = updated_model.status
+            existing_model.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            existing_model.compromised_at = updated_model.compromised_at
+            existing_model.expires_at = updated_model.expires_at
+            existing_model.compromise_reason = updated_model.compromise_reason
+            existing_model.security_score = updated_model.security_score
+            existing_model.active_tokens_encrypted = updated_model.active_tokens_encrypted
+            existing_model.revoked_tokens_encrypted = updated_model.revoked_tokens_encrypted
+            existing_model.usage_history_encrypted = updated_model.usage_history_encrypted
             
-            # Merge changes
-            self.db_session.add(model)
+            # Flush changes
             await self.db_session.flush()
-            await self.db_session.refresh(model)
+            await self.db_session.refresh(existing_model)
             
             # Map back to domain entity
-            updated_entity = await self._to_domain(model)
+            updated_entity = await self._to_domain(existing_model)
             
             logger.debug(
                 "Token family updated",

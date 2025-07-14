@@ -69,7 +69,7 @@ class OAuthUserInfo:
         
         # Validate email using Email value object
         try:
-            email = Email.create_normalized(user_info["email"])
+            email = Email(user_info["email"])
         except ValueError as e:
             raise ValueError(f"Invalid email in OAuth user info: {e}")
         

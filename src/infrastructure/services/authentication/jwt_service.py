@@ -58,7 +58,7 @@ class JWTService(ITokenService, BaseInfrastructureService):
             audience=settings.JWT_AUDIENCE
         )
     
-    async def create_access_token(self, user: User) -> AccessToken:
+    async def create_access_token(self, user: User, family_id: Optional[str] = None, jti: Optional[str] = None) -> AccessToken:
         """Creates a new JWT access token for a user.
 
         Args:
@@ -77,8 +77,9 @@ class JWTService(ITokenService, BaseInfrastructureService):
             if not user or not user.is_active:
                 raise AuthenticationError("User must be active for token creation")
             
-            # Generate unique token ID using domain value object
-            jti = TokenId.generate().value
+            # Generate unique token ID using domain value object if not provided
+            if not jti:
+                jti = TokenId.generate().value
             
             # Calculate expiration time
             expires_in = self._get_config_value("ACCESS_TOKEN_EXPIRE_MINUTES", 30)
@@ -96,6 +97,10 @@ class JWTService(ITokenService, BaseInfrastructureService):
                 "iat": int(datetime.now(timezone.utc).timestamp()),
                 "jti": jti
             }
+            
+            # Add family_id if provided
+            if family_id:
+                payload["family_id"] = family_id
             
             # Sign token with RS256 algorithm
             token_string = jwt.encode(
@@ -129,7 +134,7 @@ class JWTService(ITokenService, BaseInfrastructureService):
                 user_id=user.id if user else None
             )
     
-    async def create_refresh_token(self, user: User, jti: Optional[str] = None) -> RefreshToken:
+    async def create_refresh_token(self, user: User, jti: Optional[str] = None, family_id: Optional[str] = None) -> RefreshToken:
         """Creates a new JWT refresh token.
 
         This token has a longer lifespan than an access token and is used to
@@ -170,6 +175,10 @@ class JWTService(ITokenService, BaseInfrastructureService):
                 "iat": int(datetime.now(timezone.utc).timestamp()),
                 "jti": jti
             }
+            
+            # Add family_id if provided
+            if family_id:
+                payload["family_id"] = family_id
             
             # Sign token with RS256 algorithm
             token_string = jwt.encode(
@@ -346,7 +355,7 @@ class JWTService(ITokenService, BaseInfrastructureService):
             # Decode and validate the token
             payload = jwt.decode(
                 token,
-                settings.JWT_PUBLIC_KEY.get_secret_value(),
+                settings.JWT_PUBLIC_KEY,
                 algorithms=["RS256"],
                 issuer=settings.JWT_ISSUER,
                 audience=settings.JWT_AUDIENCE

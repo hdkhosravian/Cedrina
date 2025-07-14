@@ -338,3 +338,17 @@ msgstr "فشل إنشاء الجلسة بسبب خطأ داخلي"
 
 msgid "session_limit_exceeded"
 msgstr "تم تجاوز الحد الأقصى لعدد الجلسات المتزامنة"
+
+# Password policy validation messages (2025-07-13)
+
+msgid "password_empty"
+msgstr "لا يمكن أن تكون كلمة المرور فارغة"
+
+msgid "password_too_long"
+msgstr "يجب ألا تزيد كلمة المرور عن {max_length} حرفًا"
+
+msgid "token_validation_infrastructure_error"
+msgstr "خطأ في البنية التحتية للتحقق من الرمز المميز"
+
+msgid "validate_access_token_infrastructure_error"
+msgstr "الرمز المميز غير صالح"

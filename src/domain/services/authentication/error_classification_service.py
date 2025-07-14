@@ -23,6 +23,7 @@ from src.common.exceptions import (
     DuplicateUserError,
     InvalidOldPasswordError,
     PasswordReuseError,
+    RateLimitExceededError,  # <-- Add import
 )
 
 from .base_authentication_service import BaseAuthenticationService, ServiceContext
@@ -219,6 +220,14 @@ class GenericValidationStrategy(ErrorClassificationStrategy):
         return ValidationError(str(error))
 
 
+class RateLimitExceededStrategy(ErrorClassificationStrategy):
+    """Strategy for classifying rate limit exceeded errors."""
+    def can_classify(self, error: Exception) -> bool:
+        return isinstance(error, RateLimitExceededError)
+    def classify(self, error: Exception) -> CedrinaError:
+        return RateLimitExceededError(str(error))
+
+
 class ErrorClassificationService(BaseAuthenticationService):
     """Domain service for classifying errors using Strategy pattern.
     
@@ -232,6 +241,7 @@ class ErrorClassificationService(BaseAuthenticationService):
         super().__init__(event_publisher)
         
         self._strategies: List[ErrorClassificationStrategy] = [
+            RateLimitExceededStrategy(),   # Highest priority for rate limit errors
             DuplicateUserStrategy(),      # Highest priority - check duplicate user first
             InvalidOldPasswordStrategy(), # Check invalid old password errors
             PasswordReuseStrategy(),      # Check password reuse errors

@@ -4,9 +4,10 @@ This service handles user registration operations following Domain-Driven Design
 principles and single responsibility principle.
 """
 
-from typing import Optional
+from typing import Optional, Union
 
 import structlog
+import uuid
 
 from src.core.config.settings import settings
 
@@ -77,9 +78,9 @@ class UserRegistrationService(IUserRegistrationService, BaseAuthenticationServic
     
     async def register_user(
         self,
-        username: Username,
-        email: Email,
-        password: Password,
+        username: Union[Username, str],
+        email: Union[Email, str],
+        password: Union[Password, str],
         language: str = "en",
         correlation_id: Optional[str] = None,
         user_agent: Optional[str] = None,
@@ -106,14 +107,25 @@ class UserRegistrationService(IUserRegistrationService, BaseAuthenticationServic
             PasswordPolicyError: If password doesn't meet requirements
             ValueError: If input validation fails
         """
+        # Ensure correlation_id is always non-empty for event traceability
+        if not correlation_id or not str(correlation_id).strip():
+            correlation_id = str(uuid.uuid4())
         context = ServiceContext(
-            correlation_id=correlation_id or "",
+            correlation_id=correlation_id,
             language=language,
-            client_ip=ip_address or "",
-            user_agent=user_agent or "",
+            client_ip=ip_address,
+            user_agent=user_agent,
             operation="user_registration"
         )
         
+        # Convert strings to value objects if needed
+        if isinstance(username, str):
+            username = Username(username)
+        if isinstance(email, str):
+            email = Email(email)
+        if isinstance(password, str):
+            password = Password(password, language=language)
+            
         async with self._operation_context(context) as ctx:
             logger.info(
                 "User registration started",
@@ -267,7 +279,9 @@ class UserRegistrationService(IUserRegistrationService, BaseAuthenticationServic
         event = UserRegisteredEvent(
             user_id=user.id,
             email=user.email,
-            correlation_id=context.correlation_id
+            correlation_id=context.correlation_id,
+            ip_address=context.client_ip,
+            user_agent=context.user_agent
         )
         
         await self._publish_domain_event(event, context, logger)

@@ -141,21 +141,27 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             SecurityViolationError: If security context indicates threat
         """
         try:
-            # Create JWT tokens using the new interface
-            access_token = await self._jwt_service.create_access_token(user=request.user)
-            refresh_token = await self._jwt_service.create_refresh_token(
-                user=request.user, 
-                jti=access_token.get_token_id().value
-            )
+            # Generate token ID once to use for both family and JWT
+            token_id = TokenId.generate()
             
-            # Create token family using the JWT's JTI for consistency
-            token_id = access_token.get_token_id()
-            
+            # Create token family with the generated token ID
             token_family = await self._domain_service.create_token_family(
                 user=request.user,
                 initial_token_id=token_id,
                 security_context=request.security_context,
                 correlation_id=request.correlation_id
+            )
+            
+            # Create JWT tokens with the same token ID and family_id
+            access_token = await self._jwt_service.create_access_token(
+                user=request.user, 
+                family_id=token_family.family_id,
+                jti=token_id.value  # Use the same token ID
+            )
+            refresh_token = await self._jwt_service.create_refresh_token(
+                user=request.user, 
+                jti=token_id.value,  # Use the same token ID
+                family_id=token_family.family_id
             )
             
             # Create token pair response
@@ -224,14 +230,19 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             new_access_token = await self._jwt_service.create_access_token(user=user)
             new_refresh_token = await self._jwt_service.create_refresh_token(
                 user=user, 
-                jti=new_access_token.get_token_id().value
+                jti=new_access_token.get_token_id().value,
+                family_id=family_id
             )
             
             # Update token family using the new JWT's JTI
             new_token_id = new_access_token.get_token_id()
             old_token_id = TokenId(jti)
+            # Fetch token family by family_id
+            token_family = await self._token_family_repository.get_family_by_id(family_id)
+            if token_family is None:
+                raise AuthenticationError(f"Token family {family_id} not found for refresh.")
             await self._domain_service.detect_token_reuse(
-                token_family=None,  # Will be retrieved by the service
+                token_family=token_family,
                 token_id=old_token_id,
                 security_context=request.security_context,
                 correlation_id=request.correlation_id
@@ -290,13 +301,29 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             SecurityViolationError: If family is compromised or security threat detected
         """
         try:
-            # Delegate to domain service for business logic
-            payload = await self._domain_service.validate_token_with_family_security(
-                access_token=access_token,
-                security_context=security_context,
-                correlation_id=correlation_id,
-                language=language
+            # Validate JWT token first
+            payload = await self._jwt_service.validate_token(access_token, language)
+            
+            # Extract token information
+            jti = payload.get("jti")
+            family_id = payload.get("family_id")
+            
+            if not jti or not family_id:
+                raise AuthenticationError("Token missing required claims")
+            
+            # Create TokenId from JTI
+            from src.domain.value_objects.jwt_token import TokenId
+            token_id = TokenId(jti)
+            
+            # Validate token family security
+            is_secure = await self._domain_service.validate_token_family_security(
+                family_id=family_id,
+                token_id=token_id,
+                correlation_id=correlation_id
             )
+            
+            if not is_secure:
+                raise SecurityViolationError("Token family security validation failed")
             
             self._log_operation("validate_token_with_family_security").debug(
                 "Token validated successfully",

@@ -54,7 +54,7 @@ class TestLogoutEndpointSecurityIntegration:
 
         # Alice tries to logout using Bob's refresh token
         response = test_client.request(
-            "DELETE",
+            "POST",
             "/api/v1/auth/logout",
             json={"refresh_token": bob_refresh_token},
             headers={"Authorization": "Bearer alice_access_token"},

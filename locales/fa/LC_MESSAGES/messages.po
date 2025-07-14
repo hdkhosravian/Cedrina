@@ -338,3 +338,17 @@ msgstr "ایجاد نشست به دلیل خطای داخلی ناموفق بو�
 
 msgid "session_limit_exceeded"
 msgstr "حداکثر تعداد نشست‌های همزمان تجاوز شده است"
+
+# Password policy validation messages (2025-07-13)
+
+msgid "password_empty"
+msgstr "رمز عبور نمی‌تواند خالی باشد"
+
+msgid "password_too_long"
+msgstr "رمز عبور باید حداکثر {max_length} کاراکتر باشد"
+
+msgid "token_validation_infrastructure_error"
+msgstr "خطای زیرساخت در اعتبارسنجی توکن"
+
+msgid "validate_access_token_infrastructure_error"
+msgstr "توکن نامعتبر"

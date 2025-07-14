@@ -321,7 +321,8 @@ class TestPasswordResetIntegration:
     async def test_value_objects_enforce_business_rules(self):
         """Test that value objects properly enforce business rules."""
         # Test Password value object
-        with pytest.raises(ValueError):
+        from src.common.exceptions import PasswordPolicyError
+        with pytest.raises(PasswordPolicyError):
             Password(value="weak")  # Too weak
         
         valid_password = Password(value="MyStr0ng#P@ssw0rd")
@@ -365,7 +366,8 @@ class TestArchitecturalBenefits:
     def test_value_objects_prevent_invalid_states(self):
         """Test that value objects prevent invalid business states."""
         # Password must meet security requirements
-        with pytest.raises(ValueError):
+        from src.common.exceptions import PasswordPolicyError
+        with pytest.raises(PasswordPolicyError):
             Password(value="")
         
         # Tokens must be properly formatted
@@ -387,7 +389,7 @@ class TestArchitecturalBenefits:
         # Events contain comprehensive context
         from src.domain.events.password_reset_events import PasswordResetRequestedEvent
         event = PasswordResetRequestedEvent(
-            occurred_at=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc),
             user_id=1,
             correlation_id="test-123",
             email="test@example.com",
@@ -400,7 +402,7 @@ class TestArchitecturalBenefits:
         assert hasattr(event, 'user_agent')
         assert hasattr(event, 'ip_address')
         assert hasattr(event, 'correlation_id')
-        assert hasattr(event, 'occurred_at')
+        assert hasattr(event, 'timestamp')
     
     def test_interfaces_enable_dependency_inversion(self):
         """Test that interfaces properly enable dependency inversion."""

@@ -62,6 +62,7 @@ class PasswordResetRequestedEvent(BaseDomainEvent, EmailEventMixin, UserEventMix
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[dict] = None
     ) -> "PasswordResetRequestedEvent":
         """Create a new password reset requested event."""
@@ -73,6 +74,7 @@ class PasswordResetRequestedEvent(BaseDomainEvent, EmailEventMixin, UserEventMix
             user_agent=user_agent,
             ip_address=ip_address,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
@@ -116,6 +118,7 @@ class PasswordResetCompletedEvent(BaseDomainEvent, EmailEventMixin, UserEventMix
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[dict] = None
     ) -> "PasswordResetCompletedEvent":
         """Create a new password reset completed event."""
@@ -126,6 +129,7 @@ class PasswordResetCompletedEvent(BaseDomainEvent, EmailEventMixin, UserEventMix
             user_agent=user_agent,
             ip_address=ip_address,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
@@ -172,6 +176,7 @@ class PasswordResetFailedEvent(BaseDomainEvent, EmailEventMixin, UserEventMixin,
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[dict] = None
     ) -> "PasswordResetFailedEvent":
         """Create a new password reset failed event."""
@@ -183,6 +188,7 @@ class PasswordResetFailedEvent(BaseDomainEvent, EmailEventMixin, UserEventMixin,
             user_agent=user_agent,
             ip_address=ip_address,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
@@ -223,6 +229,7 @@ class PasswordResetTokenExpiredEvent(BaseDomainEvent, EmailEventMixin, UserEvent
         token_created_at: datetime,
         expired_at: datetime,
         correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
         metadata: Optional[dict] = None
     ) -> "PasswordResetTokenExpiredEvent":
         """Create a new password reset token expired event."""
@@ -232,5 +239,6 @@ class PasswordResetTokenExpiredEvent(BaseDomainEvent, EmailEventMixin, UserEvent
             token_created_at=token_created_at,
             expired_at=expired_at,
             correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
             metadata=metadata or {}
         ) 

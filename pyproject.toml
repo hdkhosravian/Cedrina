@@ -106,7 +106,6 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning",
     "ignore::UserWarning",
     "ignore::RuntimeWarning",
-    "ignore::pytest.PytestRemovedIn9Warning",
     "ignore::sqlalchemy.exc.MovedIn20Warning"
 ]
 markers = [

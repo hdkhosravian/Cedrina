@@ -126,13 +126,15 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
         - Secure logging with sensitive data masking
         - Fail-secure error handling
         """
-        context = ServiceContext(
-            correlation_id=correlation_id,
+        context_kwargs = dict(
             language=language,
             client_ip=client_ip,
             user_agent=user_agent,
             operation="user_logout"
         )
+        if correlation_id:
+            context_kwargs["correlation_id"] = correlation_id
+        context = ServiceContext(**context_kwargs)
         
         async with self._operation_context(context) as ctx:
             # Log logout attempt with security context
@@ -151,7 +153,23 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
             session_duration = self._calculate_session_duration(access_token)
             
             # Revoke access token to terminate session
-            await self._token_service.revoke_access_token(str(access_token.get_token_id()))
+            try:
+                await self._token_service.revoke_access_token(str(access_token.get_token_id()))
+            except AuthenticationError:
+                # Re-raise domain-specific errors as-is
+                raise
+            except Exception as e:
+                # Convert unexpected errors to domain error
+                logger.error(
+                    "Token revocation failed during logout",
+                    user_id=user.id,
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    correlation_id=ctx.correlation_id
+                )
+                raise AuthenticationError(
+                    get_translated_message("logout_failed_internal_error", ctx.language)
+                ) from e
             
             # Publish domain event for security monitoring and audit trails
             await self._publish_logout_event(user, session_duration, ctx)
@@ -185,7 +203,18 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
             current_time = datetime.now(timezone.utc)
             duration = current_time - issued_datetime
             
-            return int(duration.total_seconds())
+            # Handle invalid durations (negative for future timestamps, too large for very old timestamps)
+            duration_seconds = int(duration.total_seconds())
+            if duration_seconds < 0 or duration_seconds > 365 * 24 * 60 * 60:  # More than 1 year
+                logger.debug(
+                    "Invalid session duration calculated",
+                    duration_seconds=duration_seconds,
+                    issued_at=issued_at,
+                    current_time=current_time.isoformat()
+                )
+                return None
+            
+            return duration_seconds
         except (ValueError, TypeError, OSError) as e:
             logger.debug(
                 "Could not calculate session duration",
@@ -207,14 +236,19 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
             session_duration: Duration of the session in seconds
             context: Service context
         """
+        # Create metadata with additional context information
+        metadata = {
+            "username": user.username,
+            "logout_reason": "user_initiated",
+            "user_agent": context.user_agent,
+            "ip_address": context.client_ip,
+            "session_duration": session_duration,
+        }
+        
         event = UserLoggedOutEvent.create(
             user_id=user.id,
-            username=user.username,
-            logout_reason="user_initiated",
             correlation_id=context.correlation_id,
-            user_agent=context.user_agent,
-            ip_address=context.client_ip,
-            session_duration=session_duration,
+            metadata=metadata,
         )
         
         await self._publish_domain_event(event, context, logger)

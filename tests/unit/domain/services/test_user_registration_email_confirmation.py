@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from unittest.mock import AsyncMock, patch
 
 from src.domain.services.authentication.user_registration_service import (
@@ -16,7 +17,12 @@ async def test_register_user_email_confirmation_flow():
     repo = AsyncMock()
     repo.get_by_username.return_value = None
     repo.get_by_email.return_value = None
-    repo.save.side_effect = lambda u: u
+    
+    def mock_save(user):
+        user.id = 1  # Assign a valid ID to the user
+        return user
+    
+    repo.save.side_effect = mock_save
     event_publisher = AsyncMock()
     token_service = AsyncMock()
     token_service.generate_token.return_value = ConfirmationToken("abc")
@@ -30,6 +36,7 @@ async def test_register_user_email_confirmation_flow():
             Email("john@example.com"),
             Password("My$tr0ngPwd!"),
             language="en",
+            correlation_id=str(uuid.uuid4()),
         )
 
     assert user.is_active is False
@@ -45,7 +52,12 @@ async def test_register_user_without_email_confirmation():
     repo = AsyncMock()
     repo.get_by_username.return_value = None
     repo.get_by_email.return_value = None
-    repo.save.side_effect = lambda u: u
+    
+    def mock_save(user):
+        user.id = 2  # Assign a valid ID to the user
+        return user
+    
+    repo.save.side_effect = mock_save
     event_publisher = AsyncMock()
     token_service = AsyncMock()
     email_service = AsyncMock()
@@ -58,6 +70,7 @@ async def test_register_user_without_email_confirmation():
             Email("jane@example.com"),
             Password("My$tr0ngPwd!"),
             language="en",
+            correlation_id=str(uuid.uuid4()),
         )
 
     assert user.is_active is True

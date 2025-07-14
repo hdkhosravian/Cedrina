@@ -17,7 +17,7 @@ operations while maintaining immutability and equality semantics.
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
-import re
+import ipaddress
 
 from src.common.exceptions import ValidationError
 
@@ -61,9 +61,10 @@ class SecurityContext:
         if not self.client_ip:
             raise ValidationError("Client IP address is required")
         
-        # Basic IP validation (IPv4 and IPv6)
-        ip_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
-        if not re.match(ip_pattern, self.client_ip):
+        # Use Python's ipaddress module for robust IP validation
+        try:
+            ipaddress.ip_address(self.client_ip)
+        except ValueError:
             raise ValidationError(f"Invalid IP address format: {self.client_ip}")
     
     def _validate_user_agent(self) -> None:

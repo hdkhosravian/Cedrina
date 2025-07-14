@@ -66,18 +66,22 @@ class EmailConfirmedEvent(BaseDomainEvent, EmailEventMixin, UserEventMixin):
         cls,
         user_id: int,
         email: str,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> "EmailConfirmedEvent":
         """Create a new email confirmed event."""
         return cls(
             user_id=user_id,
             email=email,
-            correlation_id=correlation_id
+            correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
+            metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class AuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin):
+class AuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin, EmailEventMixin, UserEventMixin):
     """Domain event published when authentication fails."""
     reason: str
     user_id: Optional[int] = None
@@ -357,7 +361,7 @@ class TokenRefreshedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
 
 
 @dataclass(frozen=True)
-class SecurityIncidentEvent(BaseDomainEvent, SecurityEventMixin):
+class SecurityIncidentEvent(BaseDomainEvent, SecurityEventMixin, StringValidationMixin, UserEventMixin, TokenEventMixin):
     """Domain event published for general security incidents."""
     
     incident_type: str
@@ -439,7 +443,7 @@ class UserAuthenticationEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class SessionEvent(BaseDomainEvent, UserEventMixin):
+class SessionEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin):
     """Domain event published for session-related events."""
     
     event_type: str  # "created", "revoked", "expired", "refreshed"
@@ -478,7 +482,7 @@ class SessionEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class UserLoggedInEvent(BaseDomainEvent, UserEventMixin):
+class UserLoggedInEvent(BaseDomainEvent, UserEventMixin, EmailEventMixin):
     """Domain event published when a user logs in successfully."""
     user_id: int
     email: Optional[str] = None
@@ -511,6 +515,8 @@ class UserRegisteredEvent(BaseDomainEvent, UserEventMixin, EmailEventMixin):
     """Domain event published when a user registers successfully."""
     user_id: int
     email: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
     
     def _validate_event_data(self) -> None:
         """Validate event data."""
@@ -523,12 +529,16 @@ class UserRegisteredEvent(BaseDomainEvent, UserEventMixin, EmailEventMixin):
         user_id: int,
         email: str,
         correlation_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> "UserRegisteredEvent":
         return cls(
             user_id=user_id,
             email=email,
             correlation_id=correlation_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
             metadata=metadata or {}
         )
 
@@ -580,7 +590,7 @@ class PasswordChangedEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class SessionCreatedEvent(BaseDomainEvent, UserEventMixin):
+class SessionCreatedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
     """Domain event published when a session is created."""
     session_id: str
     user_id: int
@@ -613,7 +623,7 @@ class SessionCreatedEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class SessionRevokedEvent(BaseDomainEvent, UserEventMixin):
+class SessionRevokedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
     """Domain event published when a session is revoked."""
     session_id: str
     user_id: int
@@ -649,7 +659,7 @@ class SessionRevokedEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class SessionExpiredEvent(BaseDomainEvent, UserEventMixin):
+class SessionExpiredEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
     """Domain event published when a session expires."""
     session_id: str
     user_id: int
@@ -682,7 +692,7 @@ class SessionExpiredEvent(BaseDomainEvent, UserEventMixin):
 
 
 @dataclass(frozen=True)
-class SessionActivityUpdatedEvent(BaseDomainEvent, UserEventMixin):
+class SessionActivityUpdatedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
     """Domain event published when session activity is updated."""
     session_id: str
     user_id: int

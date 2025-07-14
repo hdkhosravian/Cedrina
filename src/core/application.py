@@ -42,6 +42,9 @@ def create_application() -> FastAPI:
         ),
     )
     
+    # Attach settings to app state
+    app.state.settings = settings
+    
     # Configure middleware
     configure_middleware(app)
     

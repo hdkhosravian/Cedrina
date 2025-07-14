@@ -16,24 +16,25 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
 )
 from src.adapters.api.v1.auth.schemas import MessageResponse
 from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
+from src.common.exceptions import AuthenticationError
 from src.domain.interfaces import IUserLogoutService, IErrorClassificationService
 from src.domain.security.logging_service import secure_logging_service
-from src.domain.value_objects.token_requests import TokenRevocationRequest
 from src.common.i18n import get_translated_message, extract_language_from_request
 from src.core.dependencies.auth import get_current_user, TokenCred
 from src.domain.entities.user import User
+from src.core.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 
-@router.delete(
+@router.post(
     "",
     response_model=MessageResponse,
     status_code=status.HTTP_200_OK,
     tags=["auth"],
-    summary="Logout current user",
-    description="Logout user by revoking access and refresh tokens using clean architecture principles.",
+    summary="Logout user",
+    description="Logs out the current user and revokes their authentication tokens using clean architecture principles.",
 )
 async def logout_user(
     request: Request,
@@ -63,20 +64,28 @@ async def logout_user(
         # Extract language from request for I18N
         language = extract_language_from_request(request)
         
-        # Create token revocation request
-        revocation_request = TokenRevocationRequest(
-            user=current_user,
-            access_token=token.access_token,
-            refresh_token=token.refresh_token,
-            correlation_id=correlation_id,
-            language=language
+        # Create access token value object from credentials
+        from src.domain.value_objects.jwt_token import AccessToken
+        
+        access_token = AccessToken.from_encoded(
+            token=token.credentials,
+            public_key=settings.JWT_PUBLIC_KEY,
+            issuer=settings.JWT_ISSUER,
+            audience=settings.JWT_AUDIENCE
         )
         
         # Delegate logout to domain service
-        await logout_service.logout_user(revocation_request)
+        await logout_service.logout_user(
+            access_token=access_token,
+            user=current_user,
+            language=language,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            correlation_id=correlation_id,
+        )
         
         request_logger.info(
-            "User logged out successfully",
+            "Logout completed successfully",
             user_id=current_user.id,
             username_masked=secure_logging_service.mask_username(current_user.username),
             security_enhanced=True
@@ -99,4 +108,4 @@ async def logout_user(
             request=request,
             correlation_id=correlation_id,
             context_info=context_info
-        )
+        ) 
