@@ -20,8 +20,10 @@ Key Features:
 
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
+import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 if TYPE_CHECKING:
     from src.infrastructure.services.authentication.jwt_service import JWTService
@@ -45,6 +47,7 @@ from src.common.i18n import get_translated_message
 from src.infrastructure.services.base_service import BaseInfrastructureService
 from src.domain.interfaces.repositories.user_repository import IUserRepository
 from src.infrastructure.repositories.user_repository import UserRepository
+from src.infrastructure.database.session_factory import ISessionFactory
 
 
 class DomainTokenService(ITokenService, BaseInfrastructureService):
@@ -77,7 +80,7 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
     
     def __init__(
         self,
-        db_session: AsyncSession,
+        session_factory: ISessionFactory,
         user_repository: Optional[IUserRepository] = None,
         token_family_repository: Optional[ITokenFamilyRepository] = None,
         event_publisher: Optional[IEventPublisher] = None,
@@ -87,7 +90,7 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
         Initialize domain token service with infrastructure dependencies.
         
         Args:
-            db_session: SQLAlchemy async session for database operations
+            session_factory: Factory for creating database sessions
             user_repository: Repository for user data access
             token_family_repository: Repository for token family persistence
             event_publisher: Publisher for domain events
@@ -101,10 +104,21 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             security_features=["token_family", "reuse_detection", "threat_analysis"]
         )
         
-        self.db_session = db_session
-        self._user_repository = user_repository or UserRepository(db_session)
-        self._token_family_repository = token_family_repository or TokenFamilyRepository(db_session)
+        self.session_factory = session_factory
+        self._user_repository = user_repository or UserRepository(session_factory)
+        self._token_family_repository = token_family_repository or TokenFamilyRepository(session_factory)
         self._event_publisher = event_publisher or InMemoryEventPublisher()
+        
+        # Set up logging with session tracking
+        self._logger = structlog.get_logger(f"{__name__}.DomainTokenService")
+        self._session_id = id(session_factory)
+        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        self._logger.debug(
+            "DomainTokenService initialized", 
+            session_id=self._session_id, 
+            task_id=self._task_id,
+            service_name=self.service_name
+        )
         # Import JWTService dynamically to avoid circular imports
         if jwt_service is None:
             from src.infrastructure.services.authentication.jwt_service import JWTService
@@ -140,57 +154,58 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             AuthenticationError: If user is invalid or token creation fails
             SecurityViolationError: If security context indicates threat
         """
-        try:
-            # Generate token ID once to use for both family and JWT
-            token_id = TokenId.generate()
-            
-            # Create token family with the generated token ID
-            token_family = await self._domain_service.create_token_family(
-                user=request.user,
-                initial_token_id=token_id,
-                security_context=request.security_context,
-                correlation_id=request.correlation_id
-            )
-            
-            # Create JWT tokens with the same token ID and family_id
-            access_token = await self._jwt_service.create_access_token(
-                user=request.user, 
-                family_id=token_family.family_id,
-                jti=token_id.value  # Use the same token ID
-            )
-            refresh_token = await self._jwt_service.create_refresh_token(
-                user=request.user, 
-                jti=token_id.value,  # Use the same token ID
-                family_id=token_family.family_id
-            )
-            
-            # Create token pair response
-            token_pair = TokenPair(
-                access_token=access_token.token,  # Extract token string from value object
-                refresh_token=refresh_token.token,  # Extract token string from value object
-                family_id=token_family.family_id,
-                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-            )
-            
-            self._log_success(
-                operation="create_token_pair_with_family_security",
-                user_id=request.user.id,
-                family_id=token_family.family_id[:8] + "...",
-                correlation_id=request.correlation_id
-            )
-            
-            return token_pair
+        async with self.session_factory.create_transactional_session() as session:
+            try:
+                # Generate token ID once to use for both family and JWT
+                token_id = TokenId.generate()
                 
-        except (AuthenticationError, SecurityViolationError):
-            # Re-raise domain exceptions without modification
-            raise
-        except Exception as e:
-            raise self._handle_infrastructure_error(
-                error=e,
-                operation="create_token_pair_with_family_security",
-                user_id=request.user.id,
-                correlation_id=request.correlation_id
-            )
+                # Create token family with the generated token ID
+                token_family = await self._domain_service.create_token_family(
+                    user=request.user,
+                    initial_token_id=token_id,
+                    security_context=request.security_context,
+                    correlation_id=request.correlation_id
+                )
+                
+                # Create JWT tokens with the same token ID and family_id
+                access_token = await self._jwt_service.create_access_token(
+                    user=request.user, 
+                    family_id=token_family.family_id,
+                    jti=token_id.value  # Use the same token ID
+                )
+                refresh_token = await self._jwt_service.create_refresh_token(
+                    user=request.user, 
+                    jti=token_id.value,  # Use the same token ID
+                    family_id=token_family.family_id
+                )
+                
+                # Create token pair response
+                token_pair = TokenPair(
+                    access_token=access_token.token,  # Extract token string from value object
+                    refresh_token=refresh_token.token,  # Extract token string from value object
+                    family_id=token_family.family_id,
+                    expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                )
+                
+                self._log_success(
+                    operation="create_token_pair_with_family_security",
+                    user_id=request.user.id,
+                    family_id=token_family.family_id[:8] + "...",
+                    correlation_id=request.correlation_id
+                )
+                
+                return token_pair
+                    
+            except (AuthenticationError, SecurityViolationError):
+                # Re-raise domain exceptions without modification
+                raise
+            except Exception as e:
+                raise self._handle_infrastructure_error(
+                    error=e,
+                    operation="create_token_pair_with_family_security",
+                    user_id=request.user.id,
+                    correlation_id=request.correlation_id
+                )
     
     async def refresh_tokens_with_family_security(
         self,

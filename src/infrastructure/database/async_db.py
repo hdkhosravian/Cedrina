@@ -28,12 +28,14 @@ Key Components:
 import urllib.parse as urlparse
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+import asyncio
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 import structlog
+from sqlalchemy import event
 
 from src.core.config.settings import settings
 from src.core.logging import logger
@@ -70,10 +72,106 @@ def _build_async_url() -> str:
 url = make_url(_build_async_url())
 conn_params = {}
 # asyncpg does not support sslmode in connect_args, it's handled in the URL if needed
-engine = create_async_engine(url, echo=False, future=True, connect_args=conn_params)
+# Temporarily enable echo for debugging
+engine = create_async_engine(url, echo=True, future=True, connect_args=conn_params)
+
+class LoggingAsyncSession(AsyncSession):
+    """AsyncSession wrapper that logs all database operations with session and task tracking."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._logger = structlog.get_logger(f"{__name__}.LoggingAsyncSession")
+        self._session_id = id(self)
+        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        self._logger.debug("Session initialized", session_id=self._session_id, task_id=self._task_id)
+    
+    async def execute(self, statement, parameters=None, execution_options=None, bind_arguments=None, _parent_execute_state=None, _add_event=None):
+        """Log every execute operation."""
+        self._logger.debug(
+            "Executing SQL statement", 
+            session_id=self._session_id, 
+            task_id=self._task_id,
+            statement=str(statement)[:200] + "..." if len(str(statement)) > 200 else str(statement)
+        )
+        try:
+            result = await super().execute(statement, parameters, execution_options, bind_arguments, _parent_execute_state, _add_event)
+            self._logger.debug(
+                "SQL statement executed successfully", 
+                session_id=self._session_id, 
+                task_id=self._task_id
+            )
+            return result
+        except Exception as e:
+            self._logger.error(
+                "SQL statement execution failed", 
+                session_id=self._session_id, 
+                task_id=self._task_id,
+                error=str(e)
+            )
+            raise
+    
+    async def commit(self):
+        """Log commit operations."""
+        self._logger.debug("Committing transaction", session_id=self._session_id, task_id=self._task_id)
+        try:
+            await super().commit()
+            self._logger.debug("Transaction committed successfully", session_id=self._session_id, task_id=self._task_id)
+        except Exception as e:
+            self._logger.error(
+                "Transaction commit failed", 
+                session_id=self._session_id, 
+                task_id=self._task_id,
+                error=str(e)
+            )
+            raise
+    
+    async def rollback(self):
+        """Log rollback operations."""
+        self._logger.debug("Rolling back transaction", session_id=self._session_id, task_id=self._task_id)
+        try:
+            await super().rollback()
+            self._logger.debug("Transaction rolled back successfully", session_id=self._session_id, task_id=self._task_id)
+        except Exception as e:
+            self._logger.error(
+                "Transaction rollback failed", 
+                session_id=self._session_id, 
+                task_id=self._task_id,
+                error=str(e)
+            )
+            raise
+    
+    async def flush(self, objects=None):
+        """Log flush operations."""
+        self._logger.debug("Flushing session", session_id=self._session_id, task_id=self._task_id)
+        try:
+            await super().flush(objects)
+            self._logger.debug("Session flushed successfully", session_id=self._session_id, task_id=self._task_id)
+        except Exception as e:
+            self._logger.error(
+                "Session flush failed", 
+                session_id=self._session_id, 
+                task_id=self._task_id,
+                error=str(e)
+            )
+            raise
+    
+    async def close(self):
+        """Log close operations."""
+        self._logger.debug("Closing session", session_id=self._session_id, task_id=self._task_id)
+        try:
+            await super().close()
+            self._logger.debug("Session closed successfully", session_id=self._session_id, task_id=self._task_id)
+        except Exception as e:
+            self._logger.error(
+                "Session close failed", 
+                session_id=self._session_id, 
+                task_id=self._task_id,
+                error=str(e)
+            )
+            raise
 
 AsyncSessionFactory: sessionmaker[AsyncSession] = sessionmaker(  # type: ignore[type-arg]
-    bind=engine, class_=AsyncSession, expire_on_commit=False
+    bind=engine, class_=LoggingAsyncSession, expire_on_commit=False
 )
 
 
@@ -118,16 +216,16 @@ async def get_async_db_dependency() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: An asynchronous database session for use in FastAPI routes.
     """
     async with AsyncSessionFactory() as session:
-        logger.debug("Async database session created")
+        logger.debug("Async database session created", session_id=id(session), task_id=asyncio.current_task().get_name())
         try:
             yield session
         except Exception:
             await session.rollback()
-            logger.error("Async database session rollback due to error")
+            logger.error("Async database session rollback due to error", session_id=id(session), task_id=asyncio.current_task().get_name())
             raise
         finally:
             await session.close()
-            logger.debug("Async database session closed")
+            logger.debug("Async database session closed", session_id=id(session), task_id=asyncio.current_task().get_name())
 
 
 async def create_async_db_and_tables() -> None:

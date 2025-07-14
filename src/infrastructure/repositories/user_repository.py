@@ -19,17 +19,19 @@ This implementation serves as the infrastructure layer component that:
 - Implements secure logging with data masking
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+import asyncio
 
 from src.domain.entities.user import User
 from src.domain.interfaces.repositories import IUserRepository
 from src.domain.value_objects.email import Email
 from src.domain.value_objects.username import Username
 from src.common.i18n import get_translated_message
+from src.infrastructure.database.session_factory import ISessionFactory
 
 logger = structlog.get_logger(__name__)
 
@@ -57,22 +59,35 @@ class UserRepository(IUserRepository):
     - Database query optimization and performance
     """
 
-    def __init__(self, db_session: AsyncSession):
-        """Initialize repository with database session.
+    def __init__(self, session_factory: Union[AsyncSession, ISessionFactory]):
+        """Initialize repository with database session or session factory.
 
         Args:
-            db_session: SQLAlchemy async session for database operations
+            session_factory: SQLAlchemy async session or session factory for database operations
 
         Note:
-            The repository depends on the database session abstraction,
-            following dependency inversion principle. The session is injected
-            through dependency injection, making the repository testable
-            and following clean architecture principles.
+            The repository supports both direct session injection (for backward compatibility)
+            and session factory pattern (for proper session isolation). The session factory
+            pattern is preferred for new code as it ensures proper session lifecycle management.
         """
-        self.db_session = db_session
+        # Support both session factory and direct session for backward compatibility
+        if isinstance(session_factory, AsyncSession):
+            self.db_session = session_factory
+            self.session_factory = None
+        else:
+            self.session_factory = session_factory
+            self.db_session = None
+        
+        # Track session and task for debugging database connections
+        self._session_id = id(session_factory)
+        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        
         logger.debug(
             "UserRepository initialized",
             repository_type="infrastructure",
+            session_id=self._session_id,
+            task_id=self._task_id,
+            session_type="direct" if self.db_session else "factory",
             responsibilities=[
                 "user_persistence",
                 "value_object_integration",
@@ -108,10 +123,17 @@ class UserRepository(IUserRepository):
             raise ValueError("User ID must be a positive integer")
 
         try:
-            # Execute database query using SQLAlchemy
-            statement = select(User).where(User.id == user_id)
-            result = await self.db_session.execute(statement)
-            user = result.scalars().first()
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_session() as session:
+                    statement = select(User).where(User.id == user_id)
+                    result = await session.execute(statement)
+                    user = result.scalars().first()
+            else:
+                # Execute database query using SQLAlchemy
+                statement = select(User).where(User.id == user_id)
+                result = await self.db_session.execute(statement)
+                user = result.scalars().first()
 
             # Log operation result for debugging and monitoring
             logger.debug(
@@ -119,6 +141,8 @@ class UserRepository(IUserRepository):
                 user_id=user_id,
                 found=user is not None,
                 operation="get_by_id",
+                session_id=self._session_id,
+                task_id=self._task_id,
             )
 
             return user
@@ -174,10 +198,17 @@ class UserRepository(IUserRepository):
             username_value = username.lower().strip()
 
         try:
-            # Execute case-insensitive database query
-            statement = select(User).where(User.username == username_value)
-            result = await self.db_session.execute(statement)
-            user = result.scalars().first()
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_session() as session:
+                    statement = select(User).where(User.username == username_value)
+                    result = await session.execute(statement)
+                    user = result.scalars().first()
+            else:
+                # Execute case-insensitive database query
+                statement = select(User).where(User.username == username_value)
+                result = await self.db_session.execute(statement)
+                user = result.scalars().first()
 
             # Log operation with secure data masking
             logger.debug(
@@ -241,10 +272,17 @@ class UserRepository(IUserRepository):
             email_value = email.lower().strip()
 
         try:
-            # Execute case-insensitive database query
-            statement = select(User).where(User.email == email_value)
-            result = await self.db_session.execute(statement)
-            user = result.scalars().first()
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_session() as session:
+                    statement = select(User).where(User.email == email_value)
+                    result = await session.execute(statement)
+                    user = result.scalars().first()
+            else:
+                # Execute case-insensitive database query
+                statement = select(User).where(User.email == email_value)
+                result = await self.db_session.execute(statement)
+                user = result.scalars().first()
 
             # Log operation with secure data masking
             logger.debug(
@@ -293,11 +331,20 @@ class UserRepository(IUserRepository):
             raise ValueError("Reset token cannot be empty")
 
         try:
-            statement = select(User).where(
-                User.password_reset_token == token.strip()
-            )
-            result = await self.db_session.execute(statement)
-            user = result.scalars().first()
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_session() as session:
+                    statement = select(User).where(
+                        User.password_reset_token == token.strip()
+                    )
+                    result = await session.execute(statement)
+                    user = result.scalars().first()
+            else:
+                statement = select(User).where(
+                    User.password_reset_token == token.strip()
+                )
+                result = await self.db_session.execute(statement)
+                user = result.scalars().first()
 
             logger.debug(
                 "User lookup by reset token completed",
@@ -322,9 +369,16 @@ class UserRepository(IUserRepository):
         if not token or not token.strip():
             raise ValueError(get_translated_message("token_cannot_be_empty"))
         try:
-            stmt = select(User).where(User.email_confirmation_token == token.strip())
-            result = await self.db_session.execute(stmt)
-            return result.scalars().first()
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_session() as session:
+                    stmt = select(User).where(User.email_confirmation_token == token.strip())
+                    result = await session.execute(stmt)
+                    return result.scalars().first()
+            else:
+                stmt = select(User).where(User.email_confirmation_token == token.strip())
+                result = await self.db_session.execute(stmt)
+                return result.scalars().first()
         except Exception as e:
             logger.error(
                 "Error retrieving user by confirmation token",
@@ -400,38 +454,106 @@ class UserRepository(IUserRepository):
             raise ValueError("User entity cannot be None")
 
         try:
-            if user.id is None:
-                # New user - add to session for insertion
-                self.db_session.add(user)
-                logger.debug(
-                    "Adding new user to session",
-                    username=(
-                        user.username[:3] + "***"
-                        if user.username and len(user.username) > 3
-                        else user.username
-                    ),
-                    email=(
-                        user.email[:3] + "***" if user.email and len(user.email) > 3 else user.email
-                    ),
-                    operation="save_new_user",
-                )
+            # Use session factory or direct session
+            if self.session_factory:
+                async with self.session_factory.create_transactional_session() as session:
+                    if user.id is None:
+                        # New user - add to session for insertion
+                        session.add(user)
+                        logger.debug(
+                            "Adding new user to session",
+                            username=(
+                                user.username[:3] + "***"
+                                if user.username and len(user.username) > 3
+                                else user.username
+                            ),
+                            email=(
+                                user.email[:3] + "***" if user.email and len(user.email) > 3 else user.email
+                            ),
+                            operation="save_new_user",
+                        )
+                    else:
+                        # Existing user - merge changes for update
+                        logger.debug(
+                            "Updating existing user",
+                            user_id=user.id,
+                            username=(
+                                user.username[:3] + "***"
+                                if user.username and len(user.username) > 3
+                                else user.username
+                            ),
+                            operation="save_existing_user",
+                        )
+                    
+                    # Commit transaction and refresh entity
+                    logger.debug(
+                        "Committing user save transaction",
+                        user_id=user.id,
+                        session_id=self._session_id,
+                        task_id=self._task_id,
+                        operation="save_commit"
+                    )
+                    await session.commit()
+                    
+                    logger.debug(
+                        "Refreshing user entity after save",
+                        user_id=user.id,
+                        session_id=self._session_id,
+                        task_id=self._task_id,
+                        operation="save_refresh"
+                    )
+                    await session.refresh(user)
+                    # Ensure email is loaded after refresh
+                    _ = user.email
             else:
-                # Existing user - merge changes for update
-                logger.debug(
-                    "Updating existing user",
-                    user_id=user.id,
-                    username=(
-                        user.username[:3] + "***"
-                        if user.username and len(user.username) > 3
-                        else user.username
-                    ),
-                    operation="save_existing_user",
-                )
+                if user.id is None:
+                    # New user - add to session for insertion
+                    self.db_session.add(user)
+                    logger.debug(
+                        "Adding new user to session",
+                        username=(
+                            user.username[:3] + "***"
+                            if user.username and len(user.username) > 3
+                            else user.username
+                        ),
+                        email=(
+                            user.email[:3] + "***" if user.email and len(user.email) > 3 else user.email
+                        ),
+                        operation="save_new_user",
+                    )
+                else:
+                    # Existing user - merge changes for update
+                    logger.debug(
+                        "Updating existing user",
+                        user_id=user.id,
+                        username=(
+                            user.username[:3] + "***"
+                            if user.username and len(user.username) > 3
+                            else user.username
+                        ),
+                        operation="save_existing_user",
+                    )
 
-            # Commit transaction and refresh entity
-            await self.db_session.commit()
-            await self.db_session.refresh(user)
-            # Ensure email is loaded after refresh
+                # Commit transaction and refresh entity
+                logger.debug(
+                    "Committing user save transaction",
+                    user_id=user.id,
+                    session_id=self._session_id,
+                    task_id=self._task_id,
+                    operation="save_commit"
+                )
+                await self.db_session.commit()
+                
+                logger.debug(
+                    "Refreshing user entity after save",
+                    user_id=user.id,
+                    session_id=self._session_id,
+                    task_id=self._task_id,
+                    operation="save_refresh"
+                )
+                await self.db_session.refresh(user)
+                # Ensure email is loaded after refresh
+                _ = user.email
             _ = user.email
 
             logger.info(

@@ -6,6 +6,7 @@ from src.domain.value_objects.token_requests import TokenCreationRequest, TokenR
 from src.domain.value_objects.security_context import SecurityContext
 from src.domain.entities.user import User, Role
 from src.common.exceptions import AuthenticationError, SecurityViolationError
+from src.infrastructure.database.session_factory import get_default_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 
 @pytest.fixture
@@ -17,8 +18,8 @@ def db_session():
     return AsyncMock(spec=AsyncSession)
 
 @pytest.fixture
-def domain_token_service(db_session):
-    return DomainTokenService(db_session=db_session)
+def domain_token_service():
+    return DomainTokenService(session_factory=get_default_session_factory())
 
 @pytest.mark.asyncio
 async def test_create_token_pair_with_family_security_success(domain_token_service, user):

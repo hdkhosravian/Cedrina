@@ -26,7 +26,7 @@ Architecture:
 """
 
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import json
 import asyncio
 from enum import Enum
@@ -44,6 +44,7 @@ from src.domain.value_objects.jwt_token import TokenId
 from src.domain.value_objects.security_context import SecurityContext
 from src.infrastructure.services.security.field_encryption_service import FieldEncryptionService
 from src.infrastructure.database.token_family_model import TokenFamilyModel
+from src.infrastructure.database.session_factory import ISessionFactory
 
 logger = structlog.get_logger(__name__)
 
@@ -71,17 +72,24 @@ class TokenFamilyRepository(ITokenFamilyRepository):
     
     def __init__(
         self, 
-        db_session: AsyncSession,
+        session_factory: Union[AsyncSession, ISessionFactory],
         encryption_service: Optional[FieldEncryptionService] = None
     ):
         """
         Initialize the token family repository.
         
         Args:
-            db_session: SQLAlchemy async session for database operations
+            session_factory: SQLAlchemy async session or session factory for database operations
             encryption_service: Optional field encryption service for sensitive data
         """
-        self.db_session = db_session
+        # Support both session factory and direct session for backward compatibility
+        if isinstance(session_factory, AsyncSession):
+            self.db_session = session_factory
+            self.session_factory = None
+        else:
+            self.session_factory = session_factory
+            self.db_session = None
+        
         self.encryption_service = encryption_service or FieldEncryptionService()
     
     async def _to_domain(self, model: TokenFamilyModel) -> TokenFamily:

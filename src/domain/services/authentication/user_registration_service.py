@@ -7,6 +7,7 @@ principles and single responsibility principle.
 from typing import Optional, Union
 
 import structlog
+import asyncio
 import uuid
 
 from src.core.config.settings import settings
@@ -73,8 +74,17 @@ class UserRegistrationService(IUserRegistrationService, BaseAuthenticationServic
         self._user_repository = user_repository
         self._confirmation_token_service = confirmation_token_service
         self._confirmation_email_service = confirmation_email_service
-        
-        logger.info("UserRegistrationService initialized")
+
+        # Initialize logger with session and task tracking.
+        self._logger = structlog.get_logger(f"{__name__}.UserRegistrationService")
+        self._session_id = id(self)
+        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+
+        self._logger.info(
+            "UserRegistrationService initialized",
+            session_id=self._session_id,
+            task_id=self._task_id
+        )
     
     async def register_user(
         self,

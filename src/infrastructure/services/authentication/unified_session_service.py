@@ -28,6 +28,7 @@ from src.domain.events.authentication_events import (
 )
 from src.common.i18n import get_translated_message
 from src.infrastructure.services.base_service import BaseInfrastructureService
+from src.infrastructure.database.session_manager import get_transactional_session
 
 
 class UnifiedSessionService(BaseInfrastructureService):
@@ -89,49 +90,51 @@ class UnifiedSessionService(BaseInfrastructureService):
             SessionLimitExceededError: If user exceeds maximum concurrent sessions
             AuthenticationError: If session creation fails
         """
-        await self._enforce_session_limits(user_id)
-        
-        current_time = datetime.now(timezone.utc)
-        session = Session(
-            user_id=user_id,
-            jti=jti,
-            refresh_token_hash=refresh_token_hash,
-            expires_at=expires_at.replace(tzinfo=None),
-            last_activity_at=current_time.replace(tzinfo=None),
-            family_id=family_id
-        )
-        
-        try:
-            # Add session to current transaction
-            self.db_session.add(session)
-            await self.db_session.flush()  # Flush to get any DB-generated fields
+        # Use transactional session context to ensure single-task usage
+        async with get_transactional_session(self.db_session) as session:
+            await self._enforce_session_limits_transactional(session, user_id)
             
-            # Publish session created event
-            event = SessionCreatedEvent.create(
-                session_id=jti,
-                user_id=user_id,
-                family_id=family_id,
-                correlation_id=correlation_id
-            )
-            await self._event_publisher.publish(event)
-            
-            self._log_success(
-                operation="create_session",
+            current_time = datetime.now(timezone.utc)
+            session_entity = Session(
                 user_id=user_id,
                 jti=jti,
-                family_id=family_id,
-                correlation_id=correlation_id
+                refresh_token_hash=refresh_token_hash,
+                expires_at=expires_at.replace(tzinfo=None),
+                last_activity_at=current_time.replace(tzinfo=None),
+                family_id=family_id
             )
             
-            return session
+            try:
+                # Add session to current transaction
+                session.add(session_entity)
+                await session.flush()  # Flush to get any DB-generated fields
                 
-        except Exception as e:
-            raise self._handle_infrastructure_error(
-                error=e,
-                operation="create_session",
-                user_id=user_id,
-                correlation_id=correlation_id
-            )
+                # Publish session created event
+                event = SessionCreatedEvent.create(
+                    session_id=jti,
+                    user_id=user_id,
+                    family_id=family_id,
+                    correlation_id=correlation_id
+                )
+                await self._event_publisher.publish(event)
+                
+                self._log_success(
+                    operation="create_session",
+                    user_id=user_id,
+                    jti=jti,
+                    family_id=family_id,
+                    correlation_id=correlation_id
+                )
+                
+                return session_entity
+                    
+            except Exception as e:
+                raise self._handle_infrastructure_error(
+                    error=e,
+                    operation="create_session",
+                    user_id=user_id,
+                    correlation_id=correlation_id
+                )
     
     async def update_session_activity(
         self,
@@ -421,6 +424,14 @@ class UnifiedSessionService(BaseInfrastructureService):
                 get_translated_message("session_limit_exceeded", "en")
             )
     
+    async def _enforce_session_limits_transactional(self, session: AsyncSession, user_id: int) -> None:
+        """Enforce concurrent session limits for user within transaction."""
+        active_count = await self._get_active_session_count_transactional(session, user_id)
+        if active_count >= settings.MAX_CONCURRENT_SESSIONS_PER_USER:
+            raise SessionLimitExceededError(
+                get_translated_message("session_limit_exceeded", "en")
+            )
+    
     async def _get_active_session_count(self, user_id: int) -> int:
         """Get count of active sessions for user."""
         try:
@@ -439,6 +450,29 @@ class UnifiedSessionService(BaseInfrastructureService):
             self._log_warning(
                 operation="get_active_session_count",
                 message="Failed to get active session count",
+                user_id=user_id,
+                error=str(e)
+            )
+            return 0
+    
+    async def _get_active_session_count_transactional(self, session: AsyncSession, user_id: int) -> int:
+        """Get count of active sessions for user within transaction."""
+        try:
+            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            result = await session.execute(
+                select(func.count(Session.id)).where(
+                    and_(
+                        Session.user_id == user_id,
+                        Session.revoked_at.is_(None),
+                        Session.expires_at > current_time
+                    )
+                )
+            )
+            return result.scalar() or 0
+        except Exception as e:
+            self._log_warning(
+                operation="get_active_session_count_transactional",
+                message="Failed to get active session count in transaction",
                 user_id=user_id,
                 error=str(e)
             )

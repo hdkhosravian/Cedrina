@@ -189,20 +189,13 @@ def get_event_publisher() -> IEventPublisher:
     return InMemoryEventPublisher()
 
 
-def get_token_service(
-    db: AsyncDB,
-    user_repository: IUserRepository = Depends(get_user_repository),
-) -> ITokenService:
+def get_token_service() -> ITokenService:
     """Factory that returns domain-driven token service implementation.
     
     This factory creates the new domain token service that implements
     advanced token family security patterns while eliminating Redis
     dependencies for a unified database approach.
     
-    Args:
-        db: Database session dependency for unified storage
-        user_repository: User repository dependency for user lookups
-        
     Returns:
         ITokenService: Domain-driven token service implementation
         
@@ -214,11 +207,13 @@ def get_token_service(
         - Comprehensive audit trails and forensic analysis
         - Sub-millisecond performance for high-throughput applications
         - Encrypted token data for enhanced security
+        - Session isolation for parallel tasks
     """
-    # Create domain token service with database-only approach
+    from src.infrastructure.database.session_factory import get_default_session_factory
+    
+    # Create domain token service with session factory approach
     return DomainTokenService(
-        db_session=db,
-        user_repository=user_repository
+        session_factory=get_default_session_factory()
     )
 
 
