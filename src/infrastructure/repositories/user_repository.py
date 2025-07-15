@@ -80,7 +80,12 @@ class UserRepository(IUserRepository):
         
         # Track session and task for debugging database connections
         self._session_id = id(session_factory)
-        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        try:
+            current_task = asyncio.current_task()
+            self._task_id = current_task.get_name() if current_task else "unknown"
+        except RuntimeError:
+            # No event loop running (e.g., during tests)
+            self._task_id = "no_event_loop"
         
         logger.debug(
             "UserRepository initialized",

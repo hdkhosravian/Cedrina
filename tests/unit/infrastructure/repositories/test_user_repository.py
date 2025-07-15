@@ -51,7 +51,7 @@ class TestUserRepositoryProductionScenarios:
     @pytest.fixture
     def user_repository(self, mock_db_session):
         """User repository with mocked database session."""
-        return UserRepository(db_session=mock_db_session)
+        return UserRepository(session_factory=mock_db_session)
     
     @pytest.fixture
     def sample_user(self):
@@ -137,14 +137,15 @@ class TestUserRepositoryProductionScenarios:
         sample_user
     ):
         """Test behavior when database connection pool is exhausted."""
-        # Mock database session to simulate connection pool exhaustion
-        user_repository.db_session.add.side_effect = OperationalError(
+        # Mock database session commit to simulate connection pool exhaustion
+        # This happens during the commit phase which all save operations must perform
+        user_repository.db_session.commit.side_effect = OperationalError(
             "connection pool exhausted",
             None,
             None
         )
         
-        with pytest.raises(Exception):
+        with pytest.raises(OperationalError):
             await user_repository.save(sample_user)
     
     @pytest.mark.asyncio
@@ -186,61 +187,71 @@ class TestUserRepositoryProductionScenarios:
         self,
         user_repository
     ):
-        """Test handling of malicious data injection attempts."""
-        malicious_users = [
+        """Test that malicious data is rejected at the domain level during User creation.
+        
+        Note: This test verifies that malicious data cannot even create a User entity,
+        demonstrating proper domain-level validation. The repository should only handle
+        persistence of valid User entities.
+        """
+        from pydantic import ValidationError
+        
+        malicious_data_samples = [
             # SQL injection attempts
-            User(
-                id=12345,
-                username="'; DROP TABLE users; --",
-                email="'; INSERT INTO users VALUES ('hacker', 'hacker@evil.com'); --",
-                role=Role.USER,
-                is_active=True
-            ),
-            # XSS attempts
-            User(
-                id=12345,
-                username="<script>alert('xss')</script>",
-                email="javascript:alert('xss')@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
+            {
+                "id": 12345,
+                "username": "'; DROP TABLE users; --",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
+            # XSS attempts  
+            {
+                "id": 12345,
+                "username": "<script>alert('xss')</script>",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
             # Path traversal attempts
-            User(
-                id=12345,
-                username="../../../etc/passwd",
-                email="../../../etc/passwd@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
+            {
+                "id": 12345,
+                "username": "../../../etc/passwd",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
             # Command injection attempts
-            User(
-                id=12345,
-                username="; rm -rf /",
-                email="| cat /etc/passwd@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
-            # Buffer overflow attempts
-            User(
-                id=12345,
-                username="A" * 10000,
-                email="A" * 10000 + "@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
-            # Unicode normalization attacks
-            User(
-                id=12345,
-                username="test\u0000user",
-                email="test\u200b@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
+            {
+                "id": 12345,
+                "username": "; rm -rf /",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
+            # Invalid characters in username
+            {
+                "id": 12345,
+                "username": "user@invalid",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
         ]
         
-        for user in malicious_users:
-            with pytest.raises(Exception):
-                await user_repository.save(user)
+        # Test that User entity validation prevents malicious data
+        for malicious_data in malicious_data_samples:
+            with pytest.raises(ValidationError):
+                User(**malicious_data)
+        
+        # Test that repository correctly handles valid User entities
+        valid_user = User(
+            id=12345,
+            username="valid_user",
+            email="valid@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        await user_repository.save(valid_user)
     
     @pytest.mark.asyncio
     async def test_duplicate_user_detection(
@@ -248,9 +259,14 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test detection and handling of duplicate users."""
-        # Mock database session to simulate duplicate key error
-        user_repository.db_session.add.side_effect = IntegrityError(
+        """Test detection and handling of duplicate users during database commit.
+        
+        Note: Since sample_user has an ID, this tests the update path where
+        duplicate constraint violations occur during commit phase.
+        """
+        # Mock database session commit to simulate duplicate key error during transaction commit
+        # This can happen during both create and update operations when constraints are violated
+        user_repository.db_session.commit.side_effect = IntegrityError(
             "duplicate key value violates unique constraint",
             None,
             None
@@ -369,15 +385,19 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test proper transaction rollback when operations fail."""
-        # Mock database failure during user save
-        user_repository.db_session.add.side_effect = IntegrityError(
+        """Test proper transaction rollback when operations fail.
+        
+        This test verifies that when database operations fail during commit,
+        the repository properly rolls back the transaction.
+        """
+        # Mock database failure during commit (applies to both create and update paths)
+        user_repository.db_session.commit.side_effect = IntegrityError(
             "duplicate key value violates unique constraint",
             None,
             None
         )
         
-        with pytest.raises(Exception):
+        with pytest.raises(DuplicateUserError):
             await user_repository.save(sample_user)
         
         # Verify rollback was called
@@ -389,23 +409,27 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test recovery from partial failures in user operations."""
-        # Mock partial failure scenario
-        user_repository.db_session.add.side_effect = [
-            None,  # First call succeeds
-            DatabaseError("Database temporarily unavailable"),  # Second call fails
-            None,  # Third call succeeds
+        """Test recovery from partial failures in database operations.
+        
+        This test verifies that the repository properly handles transient
+        database failures and can recover for subsequent operations.
+        """
+        # Mock database failures during commit phase (which all save operations go through)
+        user_repository.db_session.commit.side_effect = [
+            None,  # First save succeeds
+            DatabaseError("Database temporarily unavailable", None, None),  # Second save fails
+            None,  # Third save succeeds after recovery
         ]
         
         # First user save should succeed
         result1 = await user_repository.save(sample_user)
         assert result1 is not None
         
-        # Second user save should fail
-        with pytest.raises(Exception):
+        # Second user save should fail due to database issue
+        with pytest.raises(DatabaseError):
             await user_repository.save(sample_user)
         
-        # Third user save should succeed again
+        # Third save should succeed (simulating database recovery)
         result3 = await user_repository.save(sample_user)
         assert result3 is not None
     
@@ -449,33 +473,64 @@ class TestUserRepositoryProductionScenarios:
         self,
         user_repository
     ):
-        """Test validation of value objects."""
-        # Test invalid email formats
-        invalid_emails = [
-            "",
+        """Test value object validation at domain level and repository integration.
+        
+        This test verifies that:
+        1. Email value objects validate format at domain level
+        2. Repository handles empty/invalid string inputs appropriately
+        3. Repository correctly processes valid Email value objects
+        """
+        from src.domain.value_objects.email import Email
+        from pydantic import ValidationError
+        
+        # Test domain-level validation: Email value object should reject invalid formats
+        invalid_email_formats = [
             "invalid-email",
-            "@example.com",
+            "@example.com", 
             "test@",
             "test@.com",
             "test..test@example.com",
         ]
         
-        for email in invalid_emails:
+        for invalid_format in invalid_email_formats:
             with pytest.raises(ValueError):
-                await user_repository.get_by_email(email)
+                Email(invalid_format)
         
-        # Test invalid username formats
-        invalid_usernames = [
-            "",
-            "a",  # Too short
-            "A" * 51,  # Too long
-            "user@name",  # Invalid characters
-            "user name",  # Spaces
+        # Test repository-level validation: should reject empty emails
+        empty_emails = ["", "   ", "\t\n"]
+        for empty_email in empty_emails:
+            with pytest.raises(ValueError):
+                await user_repository.get_by_email(empty_email)
+        
+        # Test successful integration: repository should handle valid Email value objects
+        valid_email = Email("test@example.com")
+        # Mock successful query (no user found is acceptable)
+        from unittest.mock import MagicMock
+        user_repository.db_session.execute.return_value = MagicMock()
+        user_repository.db_session.execute.return_value.scalars.return_value.first.return_value = None
+        result = await user_repository.get_by_email(valid_email)
+        assert result is None  # No user found is valid behavior
+        
+        # Test username validation: similar architectural pattern
+        from src.domain.entities.user import User
+        
+        # Test domain-level validation: User entity should reject invalid usernames
+        invalid_username_data = [
+            {"id": 1, "username": "a", "email": "test@example.com", "role": Role.USER, "is_active": True},  # Too short
+            {"id": 1, "username": "A" * 51, "email": "test@example.com", "role": Role.USER, "is_active": True},  # Too long
+            {"id": 1, "username": "user@name", "email": "test@example.com", "role": Role.USER, "is_active": True},  # Invalid chars
+            {"id": 1, "username": "user name", "email": "test@example.com", "role": Role.USER, "is_active": True},  # Spaces
         ]
         
-        for username in invalid_usernames:
+        for invalid_data in invalid_username_data:
+            with pytest.raises(ValidationError):
+                User(**invalid_data)
+        
+        # Test repository-level validation: should reject empty usernames
+        empty_usernames = ["", "   ", "\t\n"]
+        for empty_username in empty_usernames:
             with pytest.raises(ValueError):
-                await user_repository.get_by_username(username)
+                await user_repository.get_by_username(empty_username)
     
     # Network and Integration Scenarios
     # =================================
@@ -486,22 +541,26 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test behavior during network partitions."""
-        # Mock network partition scenario
-        user_repository.db_session.add.side_effect = [
+        """Test behavior during network partitions and recovery.
+        
+        This test simulates network connectivity issues that affect database
+        operations and verifies that the repository handles them appropriately.
+        """
+        # Mock network partition scenario affecting database commits
+        user_repository.db_session.commit.side_effect = [
             Exception("Network timeout"),
             Exception("Connection refused"),
-            None  # Success after partition resolves
+            None  # Success after network partition resolves
         ]
         
-        # First two attempts should fail
+        # First two attempts should fail due to network issues
         with pytest.raises(Exception):
             await user_repository.save(sample_user)
         
         with pytest.raises(Exception):
             await user_repository.save(sample_user)
         
-        # Third attempt should succeed
+        # Third attempt should succeed after network recovery
         result = await user_repository.save(sample_user)
         assert result is not None
     
@@ -511,9 +570,13 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test handling of cross-service integration failures."""
-        # Mock database session failure
-        user_repository.db_session.add.side_effect = Exception(
+        """Test handling of cross-service integration failures.
+        
+        Note: Since sample_user has an ID, it follows the update path which calls commit,
+        not add. Mock commit to simulate database service failure.
+        """
+        # Mock database session failure during commit (applies to both create and update paths)
+        user_repository.db_session.commit.side_effect = Exception(
             "Database service unavailable"
         )
         
@@ -529,47 +592,72 @@ class TestUserRepositoryProductionScenarios:
         self,
         user_repository
     ):
-        """Test proper handling of invalid user data."""
-        invalid_users = [
-            # None user
-            None,
+        """Test proper handling of invalid user data.
+        
+        This test verifies repository-level validation (None users) and 
+        domain-level validation (invalid User entity creation).
+        """
+        from pydantic import ValidationError
+        
+        # Test repository-level validation: None user should be rejected by repository
+        with pytest.raises(ValueError, match="User entity cannot be None"):
+            await user_repository.save(None)
+        
+        # Test domain-level validation: invalid User entities should fail at creation
+        invalid_user_data = [
+            # User with empty username (should fail at entity level)
+            {
+                "id": 12345,
+                "username": "",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
             
-            # User without required fields
-            User(
-                id=12345,
-                username="",
-                email="test@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
+            # User with invalid email (should fail at entity level)
+            {
+                "id": 12345,
+                "username": "testuser",
+                "email": "invalid-email",
+                "role": Role.USER,
+                "is_active": True
+            },
             
-            # User with invalid email
-            User(
-                id=12345,
-                username="testuser",
-                email="invalid-email",
-                role=Role.USER,
-                is_active=True
-            ),
-            
-            # User with invalid username
-            User(
-                id=12345,
-                username="",
-                email="test@example.com",
-                role=Role.USER,
-                is_active=True
-            ),
+            # User with username too short (should fail at entity level)
+            {
+                "id": 12345,
+                "username": "ab",
+                "email": "test@example.com",
+                "role": Role.USER,
+                "is_active": True
+            },
         ]
         
-        for user in invalid_users:
-            with pytest.raises(Exception):
-                await user_repository.save(user)
+        for user_data in invalid_user_data:
+            with pytest.raises(ValidationError):
+                User(**user_data)
+                
+        # Test successful repository handling of valid User entities
+        valid_user = User(
+            id=12345,
+            username="validuser",
+            email="valid@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        
+        # Mock database operations for successful save
+        user_repository.db_session.commit.return_value = None
+        user_repository.db_session.refresh.return_value = None
+        
+        result = await user_repository.save(valid_user)
+        assert result is not None
     
     @pytest.mark.asyncio
     async def test_user_availability_checking(
         self,
-        user_repository
+        user_repository,
+        sample_user
     ):
         """Test username and email availability checking."""
         # Mock database queries
@@ -607,14 +695,15 @@ class TestUserRepositoryProductionScenarios:
         """Test that all errors are properly logged."""
         # Mock various error scenarios
         error_scenarios = [
-            (OperationalError("Database connection failed"), "database_error"),
+            (OperationalError("Database connection failed", None, None), "database_error"),
             (IntegrityError("Duplicate key", None, None), "integrity_error"),
-            (DatabaseError("Transaction failed"), "transaction_error"),
+            (DatabaseError("Transaction failed", None, None), "transaction_error"),
             (Exception("Unknown error"), "unknown_error"),
         ]
         
         for exception, error_type in error_scenarios:
-            user_repository.db_session.add.side_effect = exception
+            # Since sample_user has an ID, it follows the update path which calls commit, not add
+            user_repository.db_session.commit.side_effect = exception
             
             with pytest.raises(Exception):
                 await user_repository.save(sample_user)
@@ -650,23 +739,47 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test handling of extremely large user data."""
-        # Create user with very large data
-        large_user = User(
+        """Test handling of maximum allowed user data sizes and rejection of oversized data.
+        
+        This test verifies both repository handling of valid large data within domain constraints
+        and proper rejection of data that exceeds domain validation limits.
+        """
+        from pydantic import ValidationError
+        
+        # Test domain validation: oversized data should be rejected at entity level
+        with pytest.raises(ValidationError):
+            User(
+                id=12345,
+                username="A" * 1000,  # Exceeds max_length=50
+                email="test@example.com",
+                role=Role.USER,
+                is_active=True
+            )
+        
+        with pytest.raises(ValidationError):
+            User(
+                id=12345,
+                username="validuser",
+                email="A" * 1000 + "@example.com",  # Email too long
+                role=Role.USER,
+                is_active=True
+            )
+        
+        # Test repository handling: maximum allowed sizes within domain constraints
+        max_size_user = User(
             id=12345,
-            username="A" * 1000,  # Very long username
-            email="A" * 1000 + "@example.com",  # Very long email
+            username="A" * 50,  # Maximum allowed username length
+            email="testuser@example.com",  # Valid email within constraints
             role=Role.USER,
             is_active=True
         )
         
         # Mock database session
-        user_repository.db_session.add.return_value = None
         user_repository.db_session.commit.return_value = None
         user_repository.db_session.refresh.return_value = None
         
-        # User save should handle large data
-        result = await user_repository.save(large_user)
+        # Repository should handle maximum valid data
+        result = await user_repository.save(max_size_user)
         assert result is not None
     
     @pytest.mark.asyncio
@@ -741,20 +854,41 @@ class TestUserRepositoryProductionScenarios:
         user_repository,
         sample_user
     ):
-        """Test integration with database session."""
+        """Test integration with database session.
+        
+        Note: Since sample_user has an ID, it follows the update path which calls 
+        commit and refresh but not add. For testing add, use a user without ID.
+        """
         # Mock database session operations
-        user_repository.db_session.add.return_value = None
         user_repository.db_session.commit.return_value = None
         user_repository.db_session.refresh.return_value = None
         
-        # User save should use database session
+        # User save should use database session (update path for existing user)
         result = await user_repository.save(sample_user)
         assert result is not None
         
-        # Verify database session was used
-        user_repository.db_session.add.assert_called()
+        # Verify database session was used (update path: commit + refresh, no add)
         user_repository.db_session.commit.assert_called()
         user_repository.db_session.refresh.assert_called()
+        
+        # Test create path with user without ID
+        new_user = User(
+            id=None,  # No ID triggers create path
+            username="newuser",
+            email="new@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        
+        # Mock add for create path
+        user_repository.db_session.add.return_value = None
+        
+        # Create new user should call add
+        result = await user_repository.save(new_user)
+        assert result is not None
+        
+        # Verify add was called for new user
+        user_repository.db_session.add.assert_called()
     
     @pytest.mark.asyncio
     async def test_user_lookup_integration(

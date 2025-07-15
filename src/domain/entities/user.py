@@ -1,7 +1,7 @@
 from datetime import datetime  # For timestamp fields
 from typing import Optional  # For optional fields
 
-from pydantic import EmailStr, field_validator  # For email validation and custom validation
+from pydantic import ConfigDict, EmailStr, field_validator  # For email validation and custom validation
 from sqlalchemy import DateTime, text  # For SQL expressions and explicit DateTime type
 from sqlalchemy.dialects import postgresql  # Import PostgreSQL dialect
 from sqlmodel import Column, Field, Index, SQLModel, String  # For ORM and table definition
@@ -34,6 +34,12 @@ class User(SQLModel, table=True):
         password_reset_token: A secure token for verifying a password reset request.
         password_reset_token_expires_at: The expiration timestamp for the reset token.
     """
+
+    model_config = ConfigDict(
+        validate_assignment=True,  # Enable validation on field assignment
+        str_strip_whitespace=True,  # Strip whitespace from string fields
+        validate_default=True,  # Validate default values
+    )
 
     __tablename__ = "users"  # Explicit table name for clarity
 
