@@ -49,6 +49,51 @@ def default_key_func(request: Request) -> str:
     return f"{client_host}:{username}"
 
 
+def _get_secure_client_ip(request: Request) -> str:
+    """Get the client IP address securely, preventing IP spoofing attacks.
+    
+    This function prioritizes the actual client IP over potentially spoofed headers.
+    It logs suspicious attempts to bypass rate limiting via header manipulation.
+    
+    Args:
+        request: The incoming HTTP request
+        
+    Returns:
+        str: The client IP address
+    """
+    # Get the real client IP (most reliable)
+    real_client_ip = request.client.host if request.client else "unknown"
+    
+    # Check for potentially spoofed forwarded headers
+    forwarded_headers = [
+        "X-Forwarded-For",
+        "X-Real-IP", 
+        "X-Originating-IP",
+        "X-Remote-IP",
+        "X-Remote-Addr",
+        "CF-Connecting-IP",
+        "True-Client-IP"
+    ]
+    
+    suspicious_headers = []
+    for header in forwarded_headers:
+        if header in request.headers:
+            forwarded_ip = request.headers[header]
+            if forwarded_ip != real_client_ip:
+                suspicious_headers.append(f"{header}: {forwarded_ip}")
+    
+    # Log potential IP spoofing attempts
+    if suspicious_headers:
+        logger.warning(
+            f"Potential IP spoofing attempt detected. "
+            f"Real IP: {real_client_ip}, Forwarded headers: {suspicious_headers}, "
+            f"Endpoint: {request.url.path}"
+        )
+    
+    # Always use the real client IP for rate limiting to prevent bypass
+    return real_client_ip
+
+
 def key_func(request: Request) -> str | None:
     """Determines the rate-limiting key for a given request.
 
@@ -80,7 +125,7 @@ def key_func(request: Request) -> str | None:
     if request.url.path in PUBLIC_ROUTES:
         return None  # Do not rate-limit public routes
     if request.url.path in AUTH_ROUTES:
-        return get_remote_address(request)
+        return _get_secure_client_ip(request)
     return None
 
 

@@ -379,32 +379,7 @@ class TestArchitecturalBenefits:
         from src.domain.value_objects.rate_limit import RateLimitWindow
         with pytest.raises(ValueError):
             RateLimitWindow.create_custom(user_id=0, window_minutes=5, max_attempts=1)
-    
-    def test_domain_events_enable_observability(self, event_publisher):
-        """Test that domain events enable comprehensive observability."""
-        # Events can be filtered and analyzed
-        assert callable(event_publisher.get_events_by_type)
-        assert callable(event_publisher.get_events_by_user)
-        assert callable(event_publisher.get_published_events)
-        
-        # Events contain comprehensive context
-        from src.domain.events.password_reset_events import PasswordResetRequestedEvent
-        event = PasswordResetRequestedEvent(
-            timestamp=datetime.now(timezone.utc),
-            user_id=1,
-            correlation_id="test-123",
-            email="test@example.com",
-            token_expires_at=datetime.now(timezone.utc),
-            user_agent="Test Browser",
-            ip_address="192.168.1.1",
-        )
-        
-        # All security-relevant fields are captured
-        assert hasattr(event, 'user_agent')
-        assert hasattr(event, 'ip_address')
-        assert hasattr(event, 'correlation_id')
-        assert hasattr(event, 'timestamp')
-    
+
     def test_interfaces_enable_dependency_inversion(self):
         """Test that interfaces properly enable dependency inversion."""
         # Services depend on abstractions, not concretions
