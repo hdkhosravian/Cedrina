@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.common.exceptions import RateLimitExceededError
+from src.common.exceptions import RateLimitExceededError, AuthenticationError
 from src.domain.entities.user import User
 from src.common.security import IRateLimitingService
 from src.domain.value_objects.reset_token import ResetToken
@@ -432,7 +432,7 @@ class TestEnhancedPasswordResetTokenServiceErrorHandling:
     
     @pytest.mark.asyncio
     async def test_generate_token_handles_token_generation_error(self, test_user):
-        """Test handling of token generation errors."""
+        """Test handling of token generation errors - should wrap in AuthenticationError."""
         # Arrange
         token_service = PasswordResetTokenService()
         
@@ -440,8 +440,8 @@ class TestEnhancedPasswordResetTokenServiceErrorHandling:
         with patch('src.domain.value_objects.reset_token.ResetToken.generate') as mock_generate:
             mock_generate.side_effect = Exception("Token generation failed")
             
-            # Act & Assert
-            with pytest.raises(Exception, match="Token generation failed"):
+            # Act & Assert - should wrap in AuthenticationError (production behavior)
+            with pytest.raises(AuthenticationError):
                 await token_service.generate_token(test_user)
     
     def test_validate_token_handles_validation_error(self, test_user):
@@ -458,21 +458,17 @@ class TestEnhancedPasswordResetTokenServiceErrorHandling:
         assert is_valid is False
     
     def test_invalidate_token_handles_error(self, test_user):
-        """Test handling of token invalidation errors."""
+        """Test handling of token invalidation errors - should wrap in AuthenticationError."""
         # Arrange
         token_service = PasswordResetTokenService()
         test_user.password_reset_token = "some_token"
         test_user.password_reset_token_expires_at = datetime.now(timezone.utc)
 
-        # Mock user attribute to raise error when accessed for logging
-        # The service accesses user.password_reset_token[:8] for logging
-        mock_token = Mock()
-        mock_token.__getitem__ = Mock(side_effect=Exception("Database error"))
-        test_user.password_reset_token = mock_token
-
-        # Act & Assert
-        with pytest.raises(Exception, match="Database error"):
-            token_service.invalidate_token(test_user, "test_reason")
+        # Mock _has_active_token to raise an error during validation
+        with patch.object(token_service, '_has_active_token', side_effect=Exception("Database error")):
+            # Act & Assert - should wrap in AuthenticationError (production behavior)
+            with pytest.raises(AuthenticationError):
+                token_service.invalidate_token(test_user, "test_reason")
     
     def test_get_time_remaining_handles_error(self, test_user):
         """Test handling of time remaining calculation errors."""

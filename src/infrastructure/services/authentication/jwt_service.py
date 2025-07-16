@@ -383,4 +383,117 @@ class JWTService(ITokenService, BaseInfrastructureService):
                 error=e,
                 operation=operation,
                 language=language
+            )
+
+    async def validate_token_pair(
+        self,
+        access_token: str,
+        refresh_token: str,
+        client_ip: str,
+        user_agent: str,
+        correlation_id: Optional[str] = None,
+        language: str = "en"
+    ) -> dict:
+        """Validates that access and refresh tokens belong to the same session.
+
+        This method implements the critical security requirement that both tokens
+        must have the same JTI (JWT ID) and belong to the same user session.
+        If validation fails, both tokens should be revoked.
+
+        Args:
+            access_token: The JWT access token to validate.
+            refresh_token: The JWT refresh token to validate.
+            client_ip: Client IP address for security context.
+            user_agent: Client user agent for security context.
+            correlation_id: Request correlation ID for tracking.
+            language: Language for error messages.
+
+        Returns:
+            A dictionary containing:
+            - user: The validated User entity
+            - access_payload: Decoded access token payload
+            - refresh_payload: Decoded refresh token payload
+            - validation_metadata: Additional security metadata
+
+        Raises:
+            AuthenticationError: If tokens are invalid, expired, or don't match.
+        """
+        operation = "validate_token_pair"
+        
+        try:
+            # Validate both tokens individually first
+            access_payload = await self.validate_token(access_token, language)
+            refresh_payload = await self.validate_token(refresh_token, language)
+            
+            # Extract JTIs and user IDs
+            access_jti = access_payload.get("jti")
+            refresh_jti = refresh_payload.get("jti")
+            access_user_id = access_payload.get("sub")
+            refresh_user_id = refresh_payload.get("sub")
+            
+            # Critical security check: JTI mismatch detection
+            if access_jti != refresh_jti:
+                self._log_warning(
+                    operation=operation,
+                    message="Token pair security violation: JTI mismatch detected",
+                    access_jti=access_jti[:8] + "..." if access_jti else "none",
+                    refresh_jti=refresh_jti[:8] + "..." if refresh_jti else "none",
+                    correlation_id=correlation_id,
+                    client_ip=client_ip
+                )
+                raise AuthenticationError("Token pair security violation detected")
+            
+            # Critical security check: Cross-user attack detection
+            if access_user_id != refresh_user_id:
+                self._log_warning(
+                    operation=operation,
+                    message="Cross-user token attack detected",
+                    access_user_id=access_user_id,
+                    refresh_user_id=refresh_user_id,
+                    correlation_id=correlation_id,
+                    client_ip=client_ip
+                )
+                raise AuthenticationError("Security violation: token ownership mismatch")
+            
+            # Create minimal user object from access token payload
+            user = User(
+                id=int(access_user_id),
+                username=access_payload.get("username", "unknown"),
+                email=access_payload.get("email", "unknown@example.com"),
+                role=Role(access_payload.get("role", "user")),
+                is_active=True
+            )
+            
+            # Calculate validation time for metrics
+            validation_start = datetime.now(timezone.utc)
+            validation_time_ms = (datetime.now(timezone.utc) - validation_start).total_seconds() * 1000
+            
+            self._log_success(
+                operation=operation,
+                user_id=user.id,
+                jti=access_jti[:8] + "..." if access_jti else "none",
+                validation_time_ms=validation_time_ms,
+                correlation_id=correlation_id
+            )
+            
+            return {
+                "user": user,
+                "access_payload": access_payload,
+                "refresh_payload": refresh_payload,
+                "validation_metadata": {
+                    "jti_validated": True,
+                    "validation_time_ms": validation_time_ms,
+                    "client_ip": client_ip,
+                    "user_agent": user_agent
+                }
+            }
+            
+        except AuthenticationError:
+            # Re-raise domain exceptions without modification
+            raise
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                correlation_id=correlation_id
             ) 

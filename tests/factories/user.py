@@ -42,7 +42,7 @@ def create_fake_user(
 
     """
     return User(
-        id=id if id is not None else fake.random_int(min=1, max=10000),
+        id=id,  # Let the database auto-generate IDs to avoid collisions
         username=username if username is not None else fake.user_name(),
         email=email if email is not None else fake.email(),
         hashed_password=(

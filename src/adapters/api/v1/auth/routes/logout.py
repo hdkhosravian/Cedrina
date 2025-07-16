@@ -38,7 +38,6 @@ router = APIRouter()
 )
 async def logout_user(
     request: Request,
-    token: TokenCred,
     current_user: User = Depends(get_current_user),
     logout_service: IUserLogoutService = Depends(get_user_logout_service),
     error_classification_service: IErrorClassificationService = Depends(get_error_classification_service),
@@ -64,11 +63,18 @@ async def logout_user(
         # Extract language from request for I18N
         language = extract_language_from_request(request)
         
+        # Extract token from Authorization header
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise AuthenticationError("Missing or invalid authorization header")
+        
+        token_string = authorization.split(" ", 1)[1]
+        
         # Create access token value object from credentials
         from src.domain.value_objects.jwt_token import AccessToken
         
         access_token = AccessToken.from_encoded(
-            token=token.credentials,
+            token=token_string,
             public_key=settings.JWT_PUBLIC_KEY,
             issuer=settings.JWT_ISSUER,
             audience=settings.JWT_AUDIENCE

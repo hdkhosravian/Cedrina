@@ -264,8 +264,7 @@ class PasswordResetTokenService(IPasswordResetTokenService, BaseInfrastructureSe
             raise self._handle_infrastructure_error(
                 error=e,
                 operation=operation,
-                user_id=user.id,
-                reason=reason
+                user_id=user.id
             )
     
     def is_token_expired(self, user: User) -> bool:

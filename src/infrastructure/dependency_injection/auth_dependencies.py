@@ -209,11 +209,12 @@ def get_token_service() -> ITokenService:
         - Encrypted token data for enhanced security
         - Session isolation for parallel tasks
     """
-    from src.infrastructure.database.session_factory import get_default_session_factory
+    from src.infrastructure.database.session_factory import AsyncSessionFactoryImpl
     
-    # Create domain token service with session factory approach
+    # Create domain token service with a new session factory instance
+    # to avoid sharing session factory across different event loops
     return DomainTokenService(
-        session_factory=get_default_session_factory()
+        session_factory=AsyncSessionFactoryImpl()
     )
 
 

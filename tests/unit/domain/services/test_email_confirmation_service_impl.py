@@ -21,8 +21,9 @@ async def test_confirm_email_success():
     repo = AsyncMock()
     repo.get_by_confirmation_token.return_value = user
     repo.save.return_value = user
-    token_service = AsyncMock()
+    token_service = Mock()
     token_service.validate_token.return_value = True
+    token_service.invalidate_token = Mock()
 
     event_publisher = AsyncMock()
     service = EmailConfirmationService(repo, token_service, event_publisher)
@@ -39,7 +40,7 @@ async def test_confirm_email_success():
 async def test_confirm_email_invalid_token():
     repo = AsyncMock()
     repo.get_by_confirmation_token.return_value = None
-    token_service = AsyncMock()
+    token_service = Mock()
 
     service = EmailConfirmationService(repo, token_service)
     with pytest.raises(UserNotFoundError):

@@ -78,7 +78,14 @@ class UserRegistrationService(IUserRegistrationService, BaseAuthenticationServic
         # Initialize logger with session and task tracking.
         self._logger = structlog.get_logger(f"{__name__}.UserRegistrationService")
         self._session_id = id(self)
-        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        
+        # Safely get task ID - handle case where no event loop is running
+        try:
+            current_task = asyncio.current_task()
+            self._task_id = current_task.get_name() if current_task else "no_event_loop"
+        except RuntimeError:
+            # No event loop running during initialization
+            self._task_id = "no_event_loop"
 
         self._logger.info(
             "UserRegistrationService initialized",

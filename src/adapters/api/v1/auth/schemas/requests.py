@@ -204,8 +204,8 @@ class ResetPasswordRequest(BaseModel):
         ...,
         examples=["a1b2c3d4e5f6..."],
         description="Password reset token received via email",
-        min_length=64,
-        max_length=64
+        min_length=8,   # Basic minimum length validation
+        max_length=64   # Match expected token length
     )
     new_password: str = Field(
         ...,

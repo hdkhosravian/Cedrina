@@ -57,7 +57,7 @@ class TestBaseInfrastructureService:
         
         original_error = ValueError("Test error")
         
-        with patch('src.utils.i18n.get_translated_message') as mock_get_message:
+        with patch('src.infrastructure.services.base_service.get_translated_message') as mock_get_message:
             mock_get_message.return_value = "Infrastructure error occurred"
             
             converted_error = service._handle_infrastructure_error(
@@ -68,6 +68,7 @@ class TestBaseInfrastructureService:
             )
         
         assert isinstance(converted_error, AuthenticationError)
+        mock_get_message.assert_called_with("test_operation_infrastructure_error", "en")
         assert "Infrastructure error occurred" in str(converted_error)
     
     def test_handle_infrastructure_error_with_language(self):
@@ -76,7 +77,7 @@ class TestBaseInfrastructureService:
         
         original_error = RuntimeError("Test error")
         
-        with patch('src.utils.i18n.get_translated_message') as mock_get_message:
+        with patch('src.infrastructure.services.base_service.get_translated_message') as mock_get_message:
             mock_get_message.return_value = "Erreur d'infrastructure"
             
             converted_error = service._handle_infrastructure_error(
@@ -95,6 +96,7 @@ class TestBaseInfrastructureService:
         security_context = SecurityContext(
             client_ip="192.168.1.1",
             user_agent="Mozilla/5.0",
+            request_timestamp=datetime.now(timezone.utc),
             correlation_id="test-correlation"
         )
         

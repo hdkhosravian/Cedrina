@@ -7,6 +7,7 @@ including token families, session management, and security patterns.
 
 import pytest
 import asyncio
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
@@ -70,10 +71,37 @@ class TestUnifiedAuthenticationArchitecture:
         return InMemoryEventPublisher()
     
     @pytest.fixture
-    async def domain_token_service(self, db_session, token_family_repository, event_publisher):
+    async def session_factory(self, db_session):
+        """Create session factory for domain token service."""
+        from src.infrastructure.database.session_factory import ISessionFactory
+        from contextlib import asynccontextmanager
+        
+        class TestSessionFactory(ISessionFactory):
+            def __init__(self, session):
+                self.session = session
+            
+            @asynccontextmanager
+            async def create_session(self):
+                yield self.session
+                
+            @asynccontextmanager
+            async def create_transactional_session(self):
+                yield self.session
+        
+        return TestSessionFactory(db_session)
+    
+    @pytest.fixture
+    async def user_repository(self, db_session):
+        """Create user repository."""
+        from src.infrastructure.repositories.user_repository import UserRepository
+        return UserRepository(db_session)
+    
+    @pytest.fixture
+    async def domain_token_service(self, session_factory, user_repository, token_family_repository, event_publisher):
         """Create domain token service."""
         return DomainTokenService(
-            db_session=db_session,
+            session_factory=session_factory,
+            user_repository=user_repository,
             token_family_repository=token_family_repository,
             event_publisher=event_publisher
         )
@@ -113,15 +141,27 @@ class TestUnifiedAuthenticationArchitecture:
         self,
         domain_token_service,
         unified_session_service,
-        test_user,
-        security_context
+        security_context,
+        db_session
     ):
         """Test complete token family creation with session integration."""
         from src.domain.value_objects.token_requests import TokenCreationRequest
+        from src.domain.entities.user import User, Role
+        
+        # Create unique test user for this specific test and persist to database
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
         
         # Create token pair with family
         request = TokenCreationRequest(
-            user=test_user,
+            user=unique_user,
             security_context=security_context,
             correlation_id="test-correlation-123"
         )
@@ -134,8 +174,8 @@ class TestUnifiedAuthenticationArchitecture:
         
         # Create session with family integration
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-123",
+            user_id=unique_user.id,
+            jti=f"test-jti-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             family_id=token_pair.family_id,
@@ -143,7 +183,7 @@ class TestUnifiedAuthenticationArchitecture:
         )
         
         assert session.family_id == token_pair.family_id
-        assert session.user_id == test_user.id
+        assert session.user_id == unique_user.id
         
         # Verify session is valid
         is_valid = await unified_session_service.is_session_valid(
@@ -189,15 +229,27 @@ class TestUnifiedAuthenticationArchitecture:
         self,
         domain_token_service,
         unified_session_service,
-        test_user,
-        security_context
+        security_context,
+        db_session
     ):
         """Test that session revocation compromises the token family."""
         from src.domain.value_objects.token_requests import TokenCreationRequest
+        from src.domain.entities.user import User, Role
+        
+        # Create unique test user for this specific test and persist to database
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
         
         # Create token pair and session
         create_request = TokenCreationRequest(
-            user=test_user,
+            user=unique_user,
             security_context=security_context,
             correlation_id="test-correlation-123"
         )
@@ -205,8 +257,8 @@ class TestUnifiedAuthenticationArchitecture:
         token_pair = await domain_token_service.create_token_pair_with_family_security(create_request)
         
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-123",
+            user_id=unique_user.id,
+            jti=f"test-jti-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             family_id=token_pair.family_id,
@@ -260,15 +312,27 @@ class TestUnifiedAuthenticationArchitecture:
     async def test_concurrent_session_limits(
         self,
         unified_session_service,
-        test_user
+        db_session
     ):
         """Test concurrent session limits enforcement."""
-        # Create multiple sessions
+        # Create unique test user for this specific test to avoid session accumulation
+        from src.domain.entities.user import User, Role
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
+        
+        # Create multiple sessions (within limit)
         sessions = []
         for i in range(3):
             session = await unified_session_service.create_session(
-                user_id=test_user.id,
-                jti=f"test-jti-{i}",
+                user_id=unique_user.id,
+                jti=f"test-jti-{uuid.uuid4().hex[:8]}-{i}",
                 refresh_token_hash=f"hashed_refresh_token_{i}",
                 expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
                 correlation_id=f"test-correlation-{i}"
@@ -279,20 +343,32 @@ class TestUnifiedAuthenticationArchitecture:
         assert len(sessions) == 3
         
         # Verify session limits are enforced
-        active_sessions = await unified_session_service.get_user_active_sessions(test_user.id)
+        active_sessions = await unified_session_service.get_user_active_sessions(unique_user.id)
         assert len(active_sessions) <= 5  # Assuming max 5 concurrent sessions
     
     @pytest.mark.asyncio
     async def test_session_activity_tracking(
         self,
         unified_session_service,
-        test_user
+        db_session
     ):
         """Test session activity tracking functionality."""
+        # Create unique test user for this specific test
+        from src.domain.entities.user import User, Role
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
+        
         # Create session
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-activity",
+            user_id=unique_user.id,
+            jti=f"test-jti-activity-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             correlation_id="test-correlation-activity"
@@ -313,13 +389,25 @@ class TestUnifiedAuthenticationArchitecture:
     async def test_session_expiration_handling(
         self,
         unified_session_service,
-        test_user
+        db_session
     ):
         """Test session expiration handling."""
+        # Create unique test user for this specific test
+        from src.domain.entities.user import User, Role
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
+        
         # Create session with short expiration
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-expire",
+            user_id=unique_user.id,
+            jti=f"test-jti-expire-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=1),
             correlation_id="test-correlation-expire"
@@ -398,15 +486,27 @@ class TestUnifiedAuthenticationArchitecture:
         self,
         domain_token_service,
         unified_session_service,
-        test_user,
-        security_context
+        security_context,
+        db_session
     ):
         """Test database transaction integrity across operations."""
         from src.domain.value_objects.token_requests import TokenCreationRequest
+        from src.domain.entities.user import User, Role
+        
+        # Create unique test user for this specific test
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
         
         # Create token pair
         create_request = TokenCreationRequest(
-            user=test_user,
+            user=unique_user,
             security_context=security_context,
             correlation_id="test-correlation-123"
         )
@@ -415,8 +515,8 @@ class TestUnifiedAuthenticationArchitecture:
         
         # Create session
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-transaction",
+            user_id=unique_user.id,
+            jti=f"test-jti-transaction-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             family_id=token_pair.family_id,
@@ -437,16 +537,28 @@ class TestUnifiedAuthenticationArchitecture:
         self,
         domain_token_service,
         unified_session_service,
-        test_user,
-        security_context
+        security_context,
+        db_session
     ):
         """Test performance requirements for token operations."""
         from src.domain.value_objects.token_requests import TokenCreationRequest
+        from src.domain.entities.user import User, Role
         import time
+        
+        # Create unique test user for this specific test
+        unique_user = User(
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
+            role=Role.USER,
+            is_active=True
+        )
+        db_session.add(unique_user)
+        await db_session.commit()
+        await db_session.refresh(unique_user)
         
         # Measure token creation time
         create_request = TokenCreationRequest(
-            user=test_user,
+            user=unique_user,
             security_context=security_context,
             correlation_id="test-correlation-123"
         )
@@ -461,8 +573,8 @@ class TestUnifiedAuthenticationArchitecture:
         # Measure session creation time
         start_time = time.time()
         session = await unified_session_service.create_session(
-            user_id=test_user.id,
-            jti="test-jti-performance",
+            user_id=unique_user.id,
+            jti=f"test-jti-performance-{uuid.uuid4().hex[:8]}",
             refresh_token_hash="hashed_refresh_token",
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             family_id=token_pair.family_id,

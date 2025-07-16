@@ -34,7 +34,10 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError, DisconnectionError
 
-from src.infrastructure.database.async_db import AsyncSessionFactory
+from src.infrastructure.database.async_db import AsyncSessionFactory, _build_async_url
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
 from src.infrastructure.database.session_manager import get_transactional_session
 
 logger = structlog.get_logger(__name__)
@@ -95,7 +98,29 @@ class AsyncSessionFactoryImpl(ISessionFactory):
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._session_count = 0
-        self._lock = asyncio.Lock()
+        self._lock = None  # Will be created lazily in the correct event loop context
+        
+        # Create a new engine instance for this factory with better connection pooling
+        url = make_url(_build_async_url())
+        conn_params = {}
+        self._engine = create_async_engine(
+            url, 
+            echo=False,  # Disable echo for better performance 
+            future=True, 
+            connect_args=conn_params,
+            pool_size=20,  # Larger pool size for concurrent tests
+            max_overflow=40,  # Allow more overflow connections
+            pool_pre_ping=True,  # Verify connections before use
+            pool_recycle=3600,  # Recycle connections after 1 hour
+            pool_timeout=60,  # Wait longer for connection availability
+            pool_reset_on_return='commit',  # Reset connections on return
+        )
+        
+        # Import LoggingAsyncSession dynamically to avoid circular imports
+        from src.infrastructure.database.async_db import LoggingAsyncSession
+        self._session_factory = sessionmaker(
+            bind=self._engine, class_=LoggingAsyncSession, expire_on_commit=False
+        )
         
         self._logger.debug(
             "AsyncSessionFactoryImpl initialized",
@@ -103,6 +128,12 @@ class AsyncSessionFactoryImpl(ISessionFactory):
             max_retries=max_retries,
             retry_delay=retry_delay
         )
+    
+    def _get_lock(self) -> asyncio.Lock:
+        """Get the asyncio lock, creating it lazily in the current event loop context."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
     
     async def _create_session_with_retry(self) -> AsyncSession:
         """Create a session with retry logic for production reliability.
@@ -117,11 +148,25 @@ class AsyncSessionFactoryImpl(ISessionFactory):
         
         for attempt in range(self._max_retries):
             try:
-                async with self._lock:
+                # Add a small random delay to prevent thundering herd
+                if attempt > 0:
+                    import random
+                    jitter = random.uniform(0.05, 0.15)
+                    await asyncio.sleep(self._retry_delay * attempt + jitter)
+                
+                async with self._get_lock():
                     self._session_count += 1
                     session_id = self._session_count
                 
-                session = AsyncSessionFactory()
+                session = self._session_factory()
+                
+                # Test the connection to ensure it's working
+                try:
+                    from sqlalchemy import text
+                    await session.execute(text("SELECT 1"))
+                except Exception as test_error:
+                    await session.close()
+                    raise test_error
                 
                 self._logger.debug(
                     "Session created successfully",
@@ -132,7 +177,7 @@ class AsyncSessionFactoryImpl(ISessionFactory):
                 
                 return session
                 
-            except (SQLAlchemyError, DisconnectionError) as e:
+            except Exception as e:
                 last_exception = e
                 self._logger.warning(
                     "Session creation failed, retrying",
@@ -143,7 +188,11 @@ class AsyncSessionFactoryImpl(ISessionFactory):
                 )
                 
                 if attempt < self._max_retries - 1:
-                    await asyncio.sleep(self._retry_delay * (attempt + 1))  # Exponential backoff
+                    # Exponential backoff with jitter
+                    import random
+                    base_delay = self._retry_delay * (2 ** attempt)
+                    jitter = random.uniform(0.1, 0.3)
+                    await asyncio.sleep(base_delay + jitter)
         
         # If we get here, all retries failed
         self._logger.error(

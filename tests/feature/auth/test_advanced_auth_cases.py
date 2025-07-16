@@ -39,10 +39,7 @@ async def test_registration_email_confirmation_disabled(async_client, async_sess
 
 @pytest.mark.asyncio
 async def test_register_rate_limit_enforced(async_client, monkeypatch):
-    # First, override environment variable to enable rate limiting
-    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
-    
-    # Then set the settings attributes
+    # Copy the exact pattern from the working login test
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH", "2/second")
     monkeypatch.setattr(settings, "RATE_LIMIT_STORAGE_URL", "memory://")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
@@ -50,10 +47,21 @@ async def test_register_rate_limit_enforced(async_client, monkeypatch):
     from src.main import app
     app.state.limiter = get_limiter()
 
-    await async_client.post("/api/v1/auth/register", json=_unique_user_data())
-    await async_client.post("/api/v1/auth/register", json=_unique_user_data())
-    resp = await async_client.post("/api/v1/auth/register", json=_unique_user_data())
-    assert resp.status_code == 429
+    # Use the same registration data for all attempts - this way they share the same rate limit key
+    # The first request will succeed, second will succeed, third should be rate limited
+    same_data = _unique_user_data()
+
+    # First request: should succeed
+    resp1 = await async_client.post("/api/v1/auth/register", json=same_data)
+    assert resp1.status_code == 201
+
+    # Second request: should fail with conflict (409) since user already exists
+    resp2 = await async_client.post("/api/v1/auth/register", json=same_data)
+    assert resp2.status_code == 409
+
+    # Third request: should be rate limited (429)
+    resp3 = await async_client.post("/api/v1/auth/register", json=same_data)
+    assert resp3.status_code == 429
 
 
 @pytest.mark.anyio

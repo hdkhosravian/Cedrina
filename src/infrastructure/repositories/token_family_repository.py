@@ -82,15 +82,32 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             session_factory: SQLAlchemy async session or session factory for database operations
             encryption_service: Optional field encryption service for sensitive data
         """
+        # Validate required parameters
+        if session_factory is None:
+            raise ValueError("session_factory cannot be None")
+        
         # Support both session factory and direct session for backward compatibility
         if isinstance(session_factory, AsyncSession):
             self.db_session = session_factory
             self.session_factory = None
         else:
+            # Validate that session_factory has the expected interface
+            if not hasattr(session_factory, 'create_session'):
+                raise TypeError("session_factory must have a create_session method")
             self.session_factory = session_factory
             self.db_session = None
         
         self.encryption_service = encryption_service or FieldEncryptionService()
+    
+    async def _execute_query(self, query):
+        """Execute a query using either direct session or session factory."""
+        if self.db_session is not None:
+            # Use direct session
+            return await self.db_session.execute(query)
+        else:
+            # Use session factory
+            async with self.session_factory.create_session() as session:
+                return await session.execute(query)
     
     async def _to_domain(self, model: TokenFamilyModel) -> TokenFamily:
         """
@@ -322,10 +339,19 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             # Map domain entity to ORM model
             model = await self._to_model(token_family)
             
-            # Save to database
-            self.db_session.add(model)
-            await self.db_session.flush()
-            await self.db_session.refresh(model)
+            # Save to database using session factory or direct session
+            if self.db_session is not None:
+                # Use direct session
+                self.db_session.add(model)
+                await self.db_session.flush()
+                await self.db_session.refresh(model)
+            else:
+                # Use session factory
+                async with self.session_factory.create_session() as session:
+                    session.add(model)
+                    await session.flush()
+                    await session.refresh(model)
+                    await session.commit()
             
             # Map back to domain entity
             persisted_entity = await self._to_domain(model)
@@ -356,8 +382,12 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         Returns:
             Optional[TokenFamily]: Token family if found, None otherwise
         """
+        # Validate family_id parameter
+        if family_id is None:
+            raise ValueError("Family ID cannot be None")
+        
         try:
-            result = await self.db_session.execute(
+            result = await self._execute_query(
                 select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
             )
             model = result.scalars().first()
@@ -388,7 +418,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
     
     async def get_by_family_id(self, family_id: str) -> Optional[TokenFamily]:
         """Fetch a token family by its family_id."""
-        result = await self.db_session.execute(
+        result = await self._execute_query(
             select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
         )
         model = result.scalars().first()
@@ -415,7 +445,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         try:
             # Get all active token families (we could optimize this with pagination)
             # For now, we'll search through recent families first
-            result = await self.db_session.execute(
+            result = await self._execute_query(
                 select(TokenFamilyModel)
                 .where(TokenFamilyModel.status == TokenFamilyStatus.ACTIVE.value)
                 .order_by(TokenFamilyModel.last_used_at.desc())
@@ -478,7 +508,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
         """
         try:
             # Find existing model first
-            result = await self.db_session.execute(
+            result = await self._execute_query(
                 select(TokenFamilyModel).where(TokenFamilyModel.family_id == token_family.family_id)
             )
             existing_model = result.scalars().first()
@@ -500,9 +530,21 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             existing_model.revoked_tokens_encrypted = updated_model.revoked_tokens_encrypted
             existing_model.usage_history_encrypted = updated_model.usage_history_encrypted
             
-            # Flush changes
-            await self.db_session.flush()
-            await self.db_session.refresh(existing_model)
+            # Flush changes using session factory or direct session
+            if self.db_session is not None:
+                # Use direct session
+                await self.db_session.flush()
+                await self.db_session.refresh(existing_model)
+            else:
+                # Use session factory
+                async with self.session_factory.create_session() as session:
+                    # Re-attach the model to the new session
+                    merged_model = await session.merge(existing_model)
+                    await session.flush()
+                    await session.refresh(merged_model)
+                    await session.commit()
+                    # Update the existing_model reference for consistency
+                    existing_model = merged_model
             
             # Map back to domain entity
             updated_entity = await self._to_domain(existing_model)
@@ -602,7 +644,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             bool: True if family was revoked, False if not found
         """
         try:
-            result = await self.db_session.execute(
+            result = await self._execute_query(
                 select(TokenFamilyModel).where(TokenFamilyModel.family_id == family_id)
             )
             model = result.scalars().first()
@@ -737,7 +779,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             
             query = query.order_by(TokenFamilyModel.created_at.desc()).limit(limit)
             
-            result = await self.db_session.execute(query)
+            result = await self._execute_query(query)
             models = result.scalars().all()
             
             # Map ORM models to domain entities
@@ -777,7 +819,8 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             List[TokenFamily]: List of expired token families
         """
         try:
-            current_time = datetime.now(timezone.utc)
+            # Convert to naive UTC for database comparison
+            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
             
             query = select(TokenFamilyModel).where(
                 or_(
@@ -786,7 +829,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
                 )
             ).order_by(TokenFamilyModel.expires_at.asc()).limit(limit)
             
-            result = await self.db_session.execute(query)
+            result = await self._execute_query(query)
             models = result.scalars().all()
             
             # Map ORM models to domain entities
@@ -839,12 +882,12 @@ class TokenFamilyRepository(ITokenFamilyRepository):
                 func.count(TokenFamilyModel.id).label('count')
             ).where(and_(*conditions)).group_by(TokenFamilyModel.status)
             
-            status_result = await self.db_session.execute(status_query)
+            status_result = await self._execute_query(status_query)
             status_counts = {row.status: row.count for row in status_result}
             
             # Get total families created
             total_query = select(func.count(TokenFamilyModel.id)).where(and_(*conditions))
-            total_result = await self.db_session.execute(total_query)
+            total_result = await self._execute_query(total_query)
             total_families = total_result.scalar() or 0
             
             # Get compromised families count
@@ -855,7 +898,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             
             # Get average security score
             avg_score_query = select(func.avg(TokenFamilyModel.security_score)).where(and_(*conditions))
-            avg_score_result = await self.db_session.execute(avg_score_query)
+            avg_score_result = await self._execute_query(avg_score_query)
             avg_security_score = float(avg_score_result.scalar() or 1.0)
             
             metrics = {
@@ -915,7 +958,7 @@ class TokenFamilyRepository(ITokenFamilyRepository):
             
             query = query.order_by(TokenFamilyModel.compromised_at.desc()).limit(limit)
             
-            result = await self.db_session.execute(query)
+            result = await self._execute_query(query)
             models = result.scalars().all()
             
             # Map ORM models to domain entities

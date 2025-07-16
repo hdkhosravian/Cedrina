@@ -73,7 +73,17 @@ url = make_url(_build_async_url())
 conn_params = {}
 # asyncpg does not support sslmode in connect_args, it's handled in the URL if needed
 # Temporarily enable echo for debugging
-engine = create_async_engine(url, echo=True, future=True, connect_args=conn_params)
+engine = create_async_engine(
+    url, 
+    echo=False,  # Disable echo for production
+    future=True, 
+    connect_args=conn_params,
+    pool_size=10,  # Increase pool size for concurrent tests
+    max_overflow=20,  # Allow more overflow connections
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_timeout=30,  # Wait up to 30 seconds for connection
+)
 
 class LoggingAsyncSession(AsyncSession):
     """AsyncSession wrapper that logs all database operations with session and task tracking."""
@@ -82,10 +92,18 @@ class LoggingAsyncSession(AsyncSession):
         super().__init__(*args, **kwargs)
         self._logger = structlog.get_logger(f"{__name__}.LoggingAsyncSession")
         self._session_id = id(self)
-        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        
+        # Safely get task ID - handle case where no event loop is running
+        try:
+            current_task = asyncio.current_task()
+            self._task_id = current_task.get_name() if current_task else "no_event_loop"
+        except RuntimeError:
+            # No event loop running during initialization
+            self._task_id = "no_event_loop"
+        
         self._logger.debug("Session initialized", session_id=self._session_id, task_id=self._task_id)
     
-    async def execute(self, statement, parameters=None, execution_options=None, bind_arguments=None, _parent_execute_state=None, _add_event=None):
+    async def execute(self, statement, parameters=None, execution_options=None, **kwargs):
         """Log every execute operation."""
         self._logger.debug(
             "Executing SQL statement", 
@@ -94,7 +112,13 @@ class LoggingAsyncSession(AsyncSession):
             statement=str(statement)[:200] + "..." if len(str(statement)) > 200 else str(statement)
         )
         try:
-            result = await super().execute(statement, parameters, execution_options, bind_arguments, _parent_execute_state, _add_event)
+            # Call parent execute with minimal arguments based on what's provided
+            if execution_options is not None:
+                result = await super().execute(statement, parameters, execution_options)
+            elif parameters is not None:
+                result = await super().execute(statement, parameters)
+            else:
+                result = await super().execute(statement)
             self._logger.debug(
                 "SQL statement executed successfully", 
                 session_id=self._session_id, 
@@ -216,16 +240,31 @@ async def get_async_db_dependency() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: An asynchronous database session for use in FastAPI routes.
     """
     async with AsyncSessionFactory() as session:
-        logger.debug("Async database session created", session_id=id(session), task_id=asyncio.current_task().get_name())
+        try:
+            current_task = asyncio.current_task()
+            task_id = current_task.get_name() if current_task else "no_event_loop"
+        except RuntimeError:
+            task_id = "no_event_loop"
+        logger.debug("Async database session created", session_id=id(session), task_id=task_id)
         try:
             yield session
         except Exception:
             await session.rollback()
-            logger.error("Async database session rollback due to error", session_id=id(session), task_id=asyncio.current_task().get_name())
+            try:
+                current_task = asyncio.current_task()
+                task_id = current_task.get_name() if current_task else "no_event_loop"
+            except RuntimeError:
+                task_id = "no_event_loop"
+            logger.error("Async database session rollback due to error", session_id=id(session), task_id=task_id)
             raise
         finally:
             await session.close()
-            logger.debug("Async database session closed", session_id=id(session), task_id=asyncio.current_task().get_name())
+            try:
+                current_task = asyncio.current_task()
+                task_id = current_task.get_name() if current_task else "no_event_loop"
+            except RuntimeError:
+                task_id = "no_event_loop"
+            logger.debug("Async database session closed", session_id=id(session), task_id=task_id)
 
 
 async def create_async_db_and_tables() -> None:

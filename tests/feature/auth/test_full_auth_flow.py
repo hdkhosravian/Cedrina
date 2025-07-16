@@ -42,7 +42,7 @@ class TestFullAuthFlow:
         
         # Logout
         headers = {"Authorization": f"Bearer {access_token}"}
-        logout_resp = await async_client.delete("/api/v1/auth/logout", headers=headers)
+        logout_resp = await async_client.post("/api/v1/auth/logout", headers=headers)
         assert logout_resp.status_code == 200
 
     @pytest.mark.asyncio
@@ -125,5 +125,5 @@ class TestFullAuthFlow:
     @pytest.mark.asyncio
     async def test_logout_with_invalid_token(self, async_client):
         headers = {"Authorization": "Bearer invalidtoken"}
-        resp = await async_client.delete("/api/v1/auth/logout", headers=headers)
+        resp = await async_client.post("/api/v1/auth/logout", headers=headers)
         assert resp.status_code == 401 

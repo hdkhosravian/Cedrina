@@ -10,9 +10,12 @@ from typing import Dict, Optional
 import structlog
 
 from src.common.exceptions import (
+    AuthenticationError,
     ForgotPasswordError,
+    PasswordPolicyError,
     PasswordResetError,
     UserNotFoundError,
+    ValidationError,
 )
 from src.domain.entities.user import User
 from src.domain.events.password_reset_events import (
@@ -139,16 +142,7 @@ class PasswordResetService:
             
             return self._create_success_response(language)
             
-        except (PasswordResetError, UserNotFoundError):
-            # Re-raise known domain exceptions
-            if user:
-                await self._publish_failure_event(
-                    user, "token_validation_failed", token[:8] if token else None,
-                    user_agent, ip_address, correlation_id
-                )
-            raise
-            
-        except ValueError as e:
+        except (ValueError, PasswordPolicyError) as e:
             # Handle password validation errors from value objects
             if user:
                 self._token_service.invalidate_token(user, reason="weak_password_attempt")
@@ -169,6 +163,15 @@ class PasswordResetService:
             raise PasswordResetError(
                 get_translated_message("password_too_weak", language)
             ) from e
+            
+        except (PasswordResetError, UserNotFoundError, ValidationError, AuthenticationError):
+            # Re-raise known domain exceptions
+            if user:
+                await self._publish_failure_event(
+                    user, "token_validation_failed", token[:8] if token else None,
+                    user_agent, ip_address, correlation_id
+                )
+            raise
             
         except Exception as e:
             # Handle unexpected errors
@@ -206,17 +209,21 @@ class PasswordResetService:
             User: User entity associated with token
             
         Raises:
-            PasswordResetError: If token format is invalid or user not found
+            PasswordResetError: If token format is invalid (400 Bad Request)
+            ValidationError: If token is well-formed but invalid (422 Unprocessable Entity)
+            UserNotFoundError: If token exists but user not found (404 Not Found)
         """
         # Validate token format using value object
         try:
             # This will raise ValueError if format is invalid
             ResetToken.from_existing(token, datetime.now(timezone.utc))
-        except ValueError:
-            logger.warning("Invalid token format received")
+        except ValueError as e:
+            logger.warning("Invalid token format received", error=str(e))
+            
+            # For token format validation errors, return 400 Bad Request
             raise PasswordResetError(
                 get_translated_message("password_reset_token_invalid", language)
-            )
+            ) from e
         
         # Find user by token
         user = await self._user_repository.get_by_reset_token(token)
@@ -225,6 +232,7 @@ class PasswordResetService:
                 "Password reset attempted with unknown token",
                 token_prefix=token[:8]
             )
+            # For well-formed but non-existent tokens, return 400 Bad Request
             raise PasswordResetError(
                 get_translated_message("password_reset_token_invalid", language)
             )

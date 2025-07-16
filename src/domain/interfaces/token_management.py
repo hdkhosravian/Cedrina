@@ -145,6 +145,43 @@ class ITokenService(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    async def validate_token_pair(
+        self,
+        access_token: str,
+        refresh_token: str,
+        client_ip: str,
+        user_agent: str,
+        correlation_id: Optional[str] = None,
+        language: str = "en"
+    ) -> dict:
+        """Validates that access and refresh tokens belong to the same session.
+
+        This method implements the critical security requirement that both tokens
+        must have the same JTI (JWT ID) and belong to the same user session.
+        If validation fails, both tokens should be revoked.
+
+        Args:
+            access_token: The JWT access token to validate.
+            refresh_token: The JWT refresh token to validate.
+            client_ip: Client IP address for security context.
+            user_agent: Client user agent for security context.
+            correlation_id: Request correlation ID for tracking.
+            language: Language for error messages.
+
+        Returns:
+            A dictionary containing:
+            - user: The validated User entity
+            - access_payload: Decoded access token payload
+            - refresh_payload: Decoded refresh token payload
+            - validation_metadata: Additional security metadata
+
+        Raises:
+            AuthenticationError: If tokens are invalid, expired, or don't match.
+            SecurityViolationError: If JTI mismatch or cross-user attack detected.
+        """
+        raise NotImplementedError
+
 
 class ISessionService(ABC):
     """Interface for user session state management.

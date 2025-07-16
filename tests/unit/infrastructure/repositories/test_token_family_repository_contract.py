@@ -112,8 +112,8 @@ class TestTokenFamilyRepositoryContract:
         mock_result.scalars.return_value = mock_scalars
         repository.db_session.execute = AsyncMock(return_value=mock_result)
         
-        # Test with None - this should raise an error during query execution
-        with pytest.raises((ValueError, TypeError)):
+        # Test with None - this should raise an error during parameter validation
+        with pytest.raises(ValueError, match="Family ID cannot be None"):
             await repository.get_family_by_id(None)
         
         # Test with empty string - this should work but return None
@@ -249,11 +249,11 @@ class TestTokenFamilyRepositoryContract:
     def test_repository_initialization_parameter_validation(self):
         """Test repository initialization parameter validation."""
         # Test with None session factory
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises(ValueError, match="session_factory cannot be None"):
             TokenFamilyRepository(session_factory=None)
         
         # Test with invalid session factory type
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises(TypeError, match="session_factory must have a create_session method"):
             TokenFamilyRepository(session_factory="invalid")
     
     async def test_method_return_types(self, repository, sample_token_family):

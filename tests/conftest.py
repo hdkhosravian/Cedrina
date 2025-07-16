@@ -114,7 +114,7 @@ async def async_client(clean_redis):
     app.dependency_overrides[get_redis] = get_test_redis
     
     async with LifespanManager(app):
-        async with AsyncClient(app=app, base_url="http://test") as ac:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             yield ac
     
     # Clean up

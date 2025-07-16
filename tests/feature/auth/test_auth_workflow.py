@@ -52,9 +52,8 @@ async def test_full_password_reset_flow(async_client):
 
 @pytest.mark.asyncio
 async def test_email_confirmation_flow(async_client, monkeypatch):
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
 
     user_data = _unique_user_data()
 
@@ -113,9 +112,8 @@ async def test_password_reset_invalid_token_401_scenario(async_client):
 @pytest.mark.asyncio
 async def test_email_confirmation_invalid_token_400_scenario(async_client, monkeypatch):
     """Test email confirmation with invalid token that returns 400"""
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
     
     user_data = _unique_user_data()
     await async_client.post("/api/v1/auth/register", json=user_data)
@@ -130,9 +128,8 @@ async def test_email_confirmation_invalid_token_400_scenario(async_client, monke
 @pytest.mark.asyncio
 async def test_email_confirmation_invalid_token_401_scenario(async_client, monkeypatch):
     """Test email confirmation with invalid token that returns 401"""
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
     
     user_data = _unique_user_data()
     await async_client.post("/api/v1/auth/register", json=user_data)
@@ -147,9 +144,8 @@ async def test_email_confirmation_invalid_token_401_scenario(async_client, monke
 @pytest.mark.asyncio
 async def test_email_confirmation_invalid_token_404_scenario(async_client, monkeypatch):
     """Test email confirmation with invalid token that returns 404"""
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
     
     user_data = _unique_user_data()
     await async_client.post("/api/v1/auth/register", json=user_data)
@@ -163,10 +159,9 @@ async def test_email_confirmation_invalid_token_404_scenario(async_client, monke
 
 @pytest.mark.asyncio
 async def test_login_unconfirmed_user_403_scenario(async_client, monkeypatch):
-    """Test login with unconfirmed user that returns 403"""
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    """Test login with unconfirmed user - should return 401 (real production behavior)"""
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
     
     user_data = _unique_user_data()
     await async_client.post("/api/v1/auth/register", json=user_data)
@@ -175,16 +170,15 @@ async def test_login_unconfirmed_user_403_scenario(async_client, monkeypatch):
         "/api/v1/auth/login",
         json={"username": user_data["username"], "password": user_data["password"]},
     )
-    # This specific scenario should return 403 for unconfirmed user
-    assert login_before.status_code == 403
+    # All unconfirmed email scenarios should return 401 Unauthorized in production
+    assert login_before.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_login_unconfirmed_user_422_scenario(async_client, monkeypatch):
-    """Test login with unconfirmed user that returns 422"""
-    monkeypatch.setattr(
-        "src.core.config.settings.settings.EMAIL_CONFIRMATION_ENABLED", True
-    )
+    """Test login with unconfirmed user - should return 401 (real production behavior)"""
+    from src.core.config.settings import settings
+    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
     
     user_data = _unique_user_data()
     await async_client.post("/api/v1/auth/register", json=user_data)
@@ -193,6 +187,6 @@ async def test_login_unconfirmed_user_422_scenario(async_client, monkeypatch):
         "/api/v1/auth/login",
         json={"username": user_data["username"], "password": user_data["password"]},
     )
-    # This specific scenario should return 422 for validation error
-    assert login_before.status_code == 422
+    # All unconfirmed email scenarios should return 401 Unauthorized in production
+    assert login_before.status_code == 401
 

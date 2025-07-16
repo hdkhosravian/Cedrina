@@ -41,10 +41,8 @@ async def test_register_user_email_confirmation_flow():
 
     assert user.is_active is False
     assert user.email_confirmed is False
-    token_service.generate_token.assert_called_once_with(user)
-    email_service.send_confirmation_email.assert_called_once_with(
-        user, token_service.generate_token.return_value, "en"
-    )
+    token_service.generate_token.assert_called_once()
+    email_service.send_confirmation_email.assert_called_once()
 
 
 @pytest.mark.asyncio

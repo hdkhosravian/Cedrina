@@ -70,11 +70,8 @@ async def resend_confirmation(
         
         # Delegate to domain service for confirmation email resend
         await confirmation_request_service.resend_confirmation_email(
-            email=email,
+            email=email.value,
             language=language,
-            client_ip=client_ip,
-            user_agent=user_agent,
-            correlation_id=correlation_id,
         )
         
         request_logger.info(

@@ -17,7 +17,7 @@ class EmailConfirmationChecker:
     
     def __init__(self):
         """Initialize email confirmation checker."""
-        self._email_confirmation_enabled = self._load_email_confirmation_setting()
+        pass
     
     def _load_email_confirmation_setting(self) -> bool:
         """Load email confirmation setting from configuration.
@@ -41,4 +41,6 @@ class EmailConfirmationChecker:
         Returns:
             bool: True if email confirmation is required
         """
-        return self._email_confirmation_enabled and not user.email_confirmed 
+        # Load setting dynamically to support test monkeypatching
+        email_confirmation_enabled = self._load_email_confirmation_setting()
+        return email_confirmation_enabled and not user.email_confirmed 

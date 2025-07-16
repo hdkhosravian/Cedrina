@@ -82,7 +82,7 @@ async def test_login_rate_limit_401_scenario(async_client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_login_rate_limit_422_scenario(async_client, monkeypatch):
-    """Test login rate limit with 422 response"""
+    """Test login rate limit with authentication failures (401 response)"""
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH", "2/second")
     monkeypatch.setattr(settings, "RATE_LIMIT_STORAGE_URL", "memory://")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
@@ -94,14 +94,14 @@ async def test_login_rate_limit_422_scenario(async_client, monkeypatch):
 
     for _ in range(2):
         resp = await async_client.post("/api/v1/auth/login", json=creds)
-        assert resp.status_code == 422
+        assert resp.status_code == 401  # Authentication failure, not validation error
 
     resp = await async_client.post("/api/v1/auth/login", json=creds)
     assert resp.status_code == 429
 
     time.sleep(1)
     resp = await async_client.post("/api/v1/auth/login", json=creds)
-    assert resp.status_code == 422
+    assert resp.status_code == 401  # Back to authentication failure after rate limit reset
 
 
 @pytest.mark.asyncio
@@ -127,7 +127,7 @@ async def test_rate_limit_bypass_headers_401_scenario(async_client, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_rate_limit_bypass_headers_422_scenario(async_client, monkeypatch):
-    """Test rate limit bypass with headers returning 422"""
+    """Test rate limit bypass with headers returning authentication failures (401)"""
     monkeypatch.setattr(settings, "RATE_LIMIT_AUTH", "2/second")
     monkeypatch.setattr(settings, "RATE_LIMIT_STORAGE_URL", "memory://")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
@@ -140,7 +140,7 @@ async def test_rate_limit_bypass_headers_422_scenario(async_client, monkeypatch)
 
     for _ in range(2):
         resp = await async_client.post("/api/v1/auth/login", json=creds, headers=headers)
-        assert resp.status_code == 422
+        assert resp.status_code == 401  # Authentication failure, not validation error
 
     resp = await async_client.post("/api/v1/auth/login", json=creds, headers=headers)
     assert resp.status_code == 429

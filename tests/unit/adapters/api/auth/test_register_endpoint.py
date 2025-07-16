@@ -1,15 +1,22 @@
 import httpx
 import pytest
 import uuid
+import time
+import random
 from fastapi import status
 
 
 def _unique_user_data():
-    """Generate unique user data for each test run."""
-    unique = uuid.uuid4().hex[:8]
+    """Generate unique user data for each test run with enhanced uniqueness."""
+    # Use timestamp, random number, and uuid for maximum uniqueness
+    timestamp = int(time.time() * 1000000)  # microseconds
+    random_part = random.randint(100000, 999999)
+    uuid_part = uuid.uuid4().hex[:8]
+    
+    unique = f"{timestamp}_{random_part}_{uuid_part}"
     return {
-        "username": f"newuser_{unique}",
-        "email": f"newuser{unique}@example.com",
+        "username": f"testuser_{unique}",
+        "email": f"testuser{unique}@example.com",
         "password": "SecureP@ssw0rd2024!",
     }
 

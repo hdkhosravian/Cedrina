@@ -328,17 +328,51 @@ async def change_password(
         return MessageResponse(message=success_message)
 
     except Exception as e:
-        # Handle authentication errors consistently
+        from src.common.exceptions import ValidationError, InvalidOldPasswordError, PasswordPolicyError
+        from fastapi import HTTPException
+        
+        # Handle validation errors (400) vs authentication errors (401)
         context_info = {
             "username_masked": secure_logging_service.mask_username(current_user.username),
             "has_old_password": bool(payload.old_password),
             "has_new_password": bool(payload.new_password)
         }
-        raise await handle_authentication_error(
-            error=e,
-            request_logger=request_logger,
-            error_classification_service=error_classification_service,
-            request=request,
-            correlation_id=correlation_id,
-            context_info=context_info
-        )
+        
+        # Handle different types of validation errors with appropriate status codes
+        if isinstance(e, ValidationError):
+            request_logger.warning(
+                "Password change validation failed",
+                error=str(e),
+                **context_info
+            )
+            language = extract_language_from_request(request)
+            
+            # InvalidOldPasswordError should return 400 (Bad Request)
+            if isinstance(e, InvalidOldPasswordError):
+                error_message = get_translated_message("invalid_old_password", language)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_message
+                )
+            # PasswordPolicyError should return 422 (Unprocessable Entity)
+            elif isinstance(e, PasswordPolicyError):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(e)
+                )
+            # Other validation errors default to 400
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e)
+                )
+        else:
+            # Handle other errors as authentication errors
+            raise await handle_authentication_error(
+                error=e,
+                request_logger=request_logger,
+                error_classification_service=error_classification_service,
+                request=request,
+                correlation_id=correlation_id,
+                context_info=context_info
+            )

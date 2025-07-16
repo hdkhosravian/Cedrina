@@ -134,10 +134,8 @@ def test_logout_revokes_tokens_step_by_step(test_client_with_mocks, test_user):
     )
 
     # Test logout directly without registration/login
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
-        json={"refresh_token": valid_refresh_token},
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
@@ -157,10 +155,8 @@ def test_logout_invalid_refresh_token(test_client_with_mocks):
     """Test logout with invalid refresh token returns success."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
-        json={"refresh_token": "invalid_refresh_token"},
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
@@ -174,10 +170,8 @@ def test_logout_missing_authorization_header():
     # For this test, we need a clean client without mocks to test auth failure
     client = TestClient(app)
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
-        json={"refresh_token": "test_refresh_token"},
         # No Authorization header
     )
 
@@ -189,8 +183,7 @@ def test_logout_invalid_access_token(test_client_with_mocks):
     """Test logout with invalid access token returns success."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": "Bearer invalid_access_token"},
     )
@@ -203,8 +196,7 @@ def test_logout_payload_validation_error(test_client_with_mocks):
     """Test logout without request body succeeds following RESTful principles."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
@@ -217,8 +209,7 @@ def test_logout_successful_token_blacklisting(test_client_with_mocks, test_user)
     """Test that logout properly blacklists the access token."""
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
@@ -243,8 +234,7 @@ def test_logout_with_session_service_error(test_client_with_mocks, test_user):
         "Session already revoked"
     )
 
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
@@ -279,10 +269,8 @@ def test_logout_with_user_dependency_failure(
     client = TestClient(app)
 
     try:
-        logout_response = client.request(
-            "DELETE",
+        logout_response = client.post(
             "/api/v1/auth/logout",
-            json={"refresh_token": "r" * 43},
             headers={"Authorization": f"Bearer {valid_access_token}"},
         )
 
@@ -340,10 +328,8 @@ def test_logout_rejects_other_users_refresh_token(
 
     try:
         # Attempt logout with other user's refresh token - this should succeed
-        logout_response = client.request(
-            "DELETE",
+        logout_response = client.post(
             "/api/v1/auth/logout",
-            json={"refresh_token": other_user_refresh_token},  # other_user's token
             headers={"Authorization": f"Bearer {valid_access_token}"},  # test_user's access token
         )
 
@@ -398,10 +384,8 @@ def test_logout_allows_own_refresh_token(
 
     try:
         # Attempt logout with user's own refresh token - this should succeed
-        logout_response = client.request(
-            "DELETE",
+        logout_response = client.post(
             "/api/v1/auth/logout",
-            json={"refresh_token": user_refresh_token},  # user's own token
             headers={"Authorization": f"Bearer {valid_access_token}"},  # user's access token
         )
 
@@ -424,10 +408,8 @@ def test_logout_rejects_malformed_refresh_token(test_client_with_mocks):
     client, logout_service_mock, valid_access_token = test_client_with_mocks
 
     # Attempt logout with malformed refresh token
-    logout_response = client.request(
-        "DELETE",
+    logout_response = client.post(
         "/api/v1/auth/logout",
-        json={"refresh_token": "malformed.jwt.token"},
         headers={"Authorization": f"Bearer {valid_access_token}"},
     )
 
@@ -479,10 +461,8 @@ def test_logout_rejects_expired_refresh_token(
 
     try:
         # Attempt logout with expired refresh token
-        logout_response = client.request(
-            "DELETE",
+        logout_response = client.post(
             "/api/v1/auth/logout",
-            json={"refresh_token": expired_refresh_token},
             headers={"Authorization": f"Bearer {valid_access_token}"},
         )
 
@@ -546,10 +526,8 @@ def test_tokens_are_invalid_after_logout(valid_access_token):
         )
 
         # 1. Log out (revoke tokens)
-        logout_response = client.request(
-            "DELETE",
+        logout_response = client.post(
             "/api/v1/auth/logout",
-            json={"refresh_token": valid_refresh_token},
             headers={"Authorization": f"Bearer {valid_access_token}"},
         )
         assert logout_response.status_code == 200

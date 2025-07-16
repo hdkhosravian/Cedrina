@@ -50,16 +50,18 @@ class TestPasswordChangeService:
     
     @pytest.fixture
     def mock_user(self):
-        """Create test user."""
-        return User(
+        """Create test user with proper password hash for testing."""
+        user = User(
             id=1,
             username="testuser",
             email="test@example.com",
-            hashed_password="$2b$12$tpooGzXbY6HtSK9xnwj0f.dI9SwSIt4bAg9gjRnJfyOCY5K4.xzHS",
             is_active=True,
             role=Role.USER,
             email_confirmed=True
         )
+        # Set password that matches the test password "OldStr0ng!Key"
+        user.set_password("OldStr0ng!Key")
+        return user
     
     @pytest.fixture
     def service(self, mock_user_repository, mock_event_publisher):

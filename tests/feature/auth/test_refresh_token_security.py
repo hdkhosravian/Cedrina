@@ -223,16 +223,17 @@ class TestRefreshTokenSecurityAcceptance:
         mock_session_service.update_session_activity.return_value = True
         mock_session_service.revoke_session = AsyncMock()
         
-        # Mock enhanced token validation service
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.return_value = {
+        # Mock token service that implements both validation and creation
+        mock_token_service = AsyncMock()
+        
+        # Mock the validate_token_pair method that's called by the endpoint
+        mock_token_service.validate_token_pair.return_value = {
             "user": test_user,
             "access_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
             "refresh_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
         }
         
-        # Mock token service
-        mock_token_service = AsyncMock()
+        # Mock token creation methods
         new_jti = TokenId.generate().value
         mock_token_service.create_access_token.return_value = f"new_access_token_{new_jti}"
         mock_token_service.create_refresh_token.return_value = f"new_refresh_token_{new_jti}"
@@ -241,7 +242,6 @@ class TestRefreshTokenSecurityAcceptance:
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
         app.dependency_overrides[get_token_service] = lambda: mock_token_service
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
         
         try:
             client = TestClient(app)
@@ -272,7 +272,7 @@ class TestRefreshTokenSecurityAcceptance:
             assert response_data["refresh_token"] != valid_token_pair["refresh_token"]
             
             # Verify token validation was called with both tokens
-            mock_enhanced_service.validate_token_pair.assert_called_once()
+            mock_token_service.validate_token_pair.assert_called_once()
             
             # Verify new tokens were created
             mock_token_service.create_access_token.assert_called_once()
@@ -297,14 +297,11 @@ class TestRefreshTokenSecurityAcceptance:
         And: Both tokens are immediately revoked
         And: Security incident is logged for investigation
         """
-        # Mock enhanced token validation service to detect mismatch
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.side_effect = AuthenticationError(
+        # Mock token service to detect mismatch
+        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.side_effect = AuthenticationError(
             "Token pair security violation: JTI mismatch detected"
         )
-        
-        # Mock token service for revocation
-        mock_token_service = AsyncMock()
         mock_token_service.revoke_access_token = AsyncMock()
         mock_token_service.revoke_refresh_token = AsyncMock()
         
@@ -312,7 +309,6 @@ class TestRefreshTokenSecurityAcceptance:
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
         app.dependency_overrides[get_token_service] = lambda: mock_token_service
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
         
         try:
             client = TestClient(app)
@@ -333,7 +329,7 @@ class TestRefreshTokenSecurityAcceptance:
             assert "token pair security violation" in response_data["detail"].lower()
             
             # Verify token validation was attempted
-            mock_enhanced_service.validate_token_pair.assert_called_once()
+            mock_token_service.validate_token_pair.assert_called_once()
             
             # Verify both tokens would be revoked (implementation detail)
             # This should be handled by the enhanced validation service
@@ -389,16 +385,16 @@ class TestRefreshTokenSecurityAcceptance:
             algorithm="RS256"
         )
         
-        # Mock enhanced validation service to detect expiration
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.side_effect = AuthenticationError(
+        # Mock token service to detect expiration
+        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.side_effect = AuthenticationError(
             "Refresh token has expired"
         )
         
         # Override dependencies
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
+        app.dependency_overrides[get_token_service] = lambda: mock_token_service
         
         try:
             client = TestClient(app)
@@ -439,16 +435,13 @@ class TestRefreshTokenSecurityAcceptance:
         # This test will verify rate limiting integration
         # Implementation will depend on the specific rate limiting strategy
         
-        # Mock enhanced validation service for successful validation
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.return_value = {
+        # Mock token service for successful validation and creation
+        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.return_value = {
             "user": test_user,
             "access_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
             "refresh_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
         }
-        
-        # Mock token service  
-        mock_token_service = AsyncMock()
         mock_token_service.create_access_token.return_value = "new_access_token"
         mock_token_service.create_refresh_token.return_value = "new_refresh_token"
         
@@ -456,7 +449,6 @@ class TestRefreshTokenSecurityAcceptance:
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
         app.dependency_overrides[get_token_service] = lambda: mock_token_service
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
         
         try:
             client = TestClient(app)
@@ -513,8 +505,8 @@ class TestRefreshTokenSecurityAcceptance:
         refresh_hash = hashlib.sha256(valid_token_pair["refresh_token"].encode()).hexdigest()
         mock_redis_client.get.return_value = refresh_hash.encode()
         
-        # Mock enhanced validation service
-        mock_enhanced_service = AsyncMock()
+        # Mock token service with side effect for concurrent requests
+        mock_token_service = AsyncMock()
         
         # First call succeeds, subsequent calls fail due to session revocation
         call_count = 0
@@ -530,10 +522,7 @@ class TestRefreshTokenSecurityAcceptance:
             else:
                 raise AuthenticationError("Session has been revoked")
         
-        mock_enhanced_service.validate_token_pair.side_effect = validate_side_effect
-        
-        # Mock token service
-        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.side_effect = validate_side_effect
         mock_token_service.create_access_token.return_value = "new_access_token"
         mock_token_service.create_refresh_token.return_value = "new_refresh_token"
         
@@ -541,7 +530,6 @@ class TestRefreshTokenSecurityAcceptance:
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
         app.dependency_overrides[get_token_service] = lambda: mock_token_service
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
         
         try:
             client = TestClient(app)
@@ -628,16 +616,16 @@ class TestRefreshTokenSecurityAcceptance:
             algorithm="RS256"
         )
         
-        # Mock enhanced validation service to detect cross-user attack
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.side_effect = AuthenticationError(
+        # Mock token service to detect cross-user attack
+        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.side_effect = AuthenticationError(
             "Cross-user token attack detected: user mismatch"
         )
         
         # Override dependencies
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
+        app.dependency_overrides[get_token_service] = lambda: mock_token_service
         
         try:
             client = TestClient(app)
@@ -659,7 +647,7 @@ class TestRefreshTokenSecurityAcceptance:
                       for keyword in ["cross-user", "user mismatch", "security violation"])
             
             # Verify validation was attempted
-            mock_enhanced_service.validate_token_pair.assert_called_once()
+            mock_token_service.validate_token_pair.assert_called_once()
             
         finally:
             app.dependency_overrides.clear()
@@ -752,14 +740,12 @@ class TestRefreshTokenSecurityAcceptance:
         refresh_hash = hashlib.sha256(valid_token_pair["refresh_token"].encode()).hexdigest()
         mock_redis_client.get.return_value = refresh_hash.encode()
         
-        mock_enhanced_service = AsyncMock()
-        mock_enhanced_service.validate_token_pair.return_value = {
+        mock_token_service = AsyncMock()
+        mock_token_service.validate_token_pair.return_value = {
             "user": test_user,
             "access_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
             "refresh_payload": {"jti": valid_token_pair["jti"], "sub": str(test_user.id)},
         }
-        
-        mock_token_service = AsyncMock()
         mock_token_service.create_access_token.return_value = "new_access_token"
         mock_token_service.create_refresh_token.return_value = "new_refresh_token"
         
@@ -767,7 +753,6 @@ class TestRefreshTokenSecurityAcceptance:
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
         app.dependency_overrides[get_token_service] = lambda: mock_token_service
-        app.dependency_overrides[get_enhanced_token_validation_service] = lambda: mock_enhanced_service
         
         try:
             client = TestClient(app)

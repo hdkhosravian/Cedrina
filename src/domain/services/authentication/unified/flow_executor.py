@@ -8,7 +8,7 @@ ensure consistent behavior across different authentication methods.
 import structlog
 from typing import Callable, Awaitable, Any
 
-from src.common.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError, ValidationError, InvalidCredentialsError
 from src.common.i18n import get_translated_message
 from .context import AuthenticationContext
 
@@ -65,8 +65,8 @@ class AuthenticationFlowExecutor:
             result = await authentication_func()
             return result
             
-        except AuthenticationError:
-            # Re-raise authentication errors
+        except (AuthenticationError, ValidationError, InvalidCredentialsError):
+            # Re-raise authentication and validation errors
             raise
         except Exception as e:
             # Handle unexpected errors

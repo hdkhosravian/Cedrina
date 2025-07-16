@@ -28,6 +28,7 @@ from .authentication import (
     JWTService,
     UnifiedSessionService,
     OAuthService,
+    PasswordEncryptionService,
 )
 
 # Email Services
@@ -54,6 +55,7 @@ __all__ = [
     "JWTService",
     "UnifiedSessionService",
     "OAuthService",
+    "PasswordEncryptionService",
     
     # Email Services
     "PasswordResetEmailService",

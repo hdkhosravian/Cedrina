@@ -112,12 +112,19 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
         # Set up logging with session tracking
         self._logger = structlog.get_logger(f"{__name__}.DomainTokenService")
         self._session_id = id(session_factory)
-        self._task_id = asyncio.current_task().get_name() if asyncio.current_task() else "unknown"
+        
+        # Safely get task ID - handle case where no event loop is running
+        try:
+            current_task = asyncio.current_task()
+            self._task_id = current_task.get_name() if current_task else "no_event_loop"
+        except RuntimeError:
+            # No event loop running during initialization
+            self._task_id = "no_event_loop"
         self._logger.debug(
             "DomainTokenService initialized", 
             session_id=self._session_id, 
             task_id=self._task_id,
-            service_name=self.service_name
+            service_name=self._service_name
         )
         # Import JWTService dynamically to avoid circular imports
         if jwt_service is None:
@@ -635,4 +642,114 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             raise self._handle_infrastructure_error(
                 error=e,
                 operation="validate_token"
+            )
+
+    async def validate_token_pair(
+        self,
+        access_token: str,
+        refresh_token: str,
+        client_ip: str,
+        user_agent: str,
+        correlation_id: Optional[str] = None,
+        language: str = "en"
+    ) -> dict:
+        """Validates that access and refresh tokens belong to the same session."""
+        from src.domain.value_objects.security_context import SecurityContext
+        from src.common.exceptions import SecurityViolationError
+        
+        try:
+            # Validate both tokens individually first
+            access_payload = await self._jwt_service.validate_token(access_token, language)
+            refresh_payload = await self._jwt_service.validate_token(refresh_token, language)
+            
+            # Extract JTIs and user IDs
+            access_jti = access_payload.get("jti")
+            refresh_jti = refresh_payload.get("jti")
+            access_user_id = access_payload.get("sub")
+            refresh_user_id = refresh_payload.get("sub")
+            
+            # Critical security check: JTI mismatch detection
+            if access_jti != refresh_jti:
+                self._logger.warning(
+                    "Token pair security violation: JTI mismatch detected",
+                    access_jti=access_jti[:8] + "..." if access_jti else "none",
+                    refresh_jti=refresh_jti[:8] + "..." if refresh_jti else "none",
+                    correlation_id=correlation_id,
+                    client_ip=client_ip,
+                    security_enhanced=True
+                )
+                raise SecurityViolationError("Token pair security violation detected")
+            
+            # Critical security check: Cross-user attack detection
+            if access_user_id != refresh_user_id:
+                self._logger.warning(
+                    "Cross-user token attack detected",
+                    access_user_id=access_user_id,
+                    refresh_user_id=refresh_user_id,
+                    correlation_id=correlation_id,
+                    client_ip=client_ip,
+                    security_enhanced=True
+                )
+                raise SecurityViolationError("Security violation: token ownership mismatch")
+            
+            # Get user from repository
+            user_id = int(access_user_id)
+            user = await self._user_repository.get_by_id(user_id)
+            if not user or not user.is_active:
+                raise AuthenticationError("User not found or inactive")
+            
+            # Validate token family security
+            security_context = SecurityContext(
+                client_ip=client_ip,
+                user_agent=user_agent,
+                correlation_id=correlation_id
+            )
+            
+            family_id = access_payload.get("family_id")
+            if family_id:
+                from src.domain.value_objects.jwt_token import TokenId
+                token_id = TokenId(access_jti)
+                
+                is_secure = await self._domain_service.validate_token_family_security(
+                    family_id=family_id,
+                    token_id=token_id,
+                    correlation_id=correlation_id
+                )
+                
+                if not is_secure:
+                    raise SecurityViolationError("Token family security validation failed")
+            
+            # Calculate validation time for metrics
+            validation_start = datetime.now(timezone.utc)
+            validation_time_ms = (datetime.now(timezone.utc) - validation_start).total_seconds() * 1000
+            
+            self._logger.info(
+                "Token pair validation successful",
+                user_id=user.id,
+                jti=access_jti[:8] + "..." if access_jti else "none",
+                family_id=family_id[:8] + "..." if family_id else "none",
+                validation_time_ms=validation_time_ms,
+                correlation_id=correlation_id,
+                security_enhanced=True
+            )
+            
+            return {
+                "user": user,
+                "access_payload": access_payload,
+                "refresh_payload": refresh_payload,
+                "validation_metadata": {
+                    "jti_validated": True,
+                    "validation_time_ms": validation_time_ms,
+                    "security_context": security_context
+                }
+            }
+            
+        except (AuthenticationError, SecurityViolationError):
+            # Re-raise domain exceptions without modification
+            raise
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="validate_token_pair",
+                correlation_id=correlation_id
             ) 

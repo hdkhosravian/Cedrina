@@ -277,8 +277,10 @@ class TestEmailConfirmationChecker:
         # Act
         checker = EmailConfirmationChecker()
 
-        # Assert
-        assert hasattr(checker, '_email_confirmation_enabled')
+        # Assert - EmailConfirmationChecker should be created successfully
+        assert checker is not None
+        assert hasattr(checker, 'is_confirmation_required')
+        assert hasattr(checker, '_load_email_confirmation_setting')
 
     @patch('src.core.config.settings.settings')
     def test_email_confirmation_checker_enabled(self, mock_settings):

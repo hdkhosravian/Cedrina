@@ -71,11 +71,32 @@ async def test_revoke_refresh_token_logs(jwt_service, user):
 
 @pytest.mark.asyncio
 async def test_validate_access_token_expired(jwt_service, user):
-    # Create a token with a short expiry
-    with patch("src.infrastructure.services.authentication.jwt_service.settings.ACCESS_TOKEN_EXPIRE_MINUTES", 0):
-        token = await jwt_service.create_access_token(user)
-    # Fast-forward time
-    with patch("datetime.datetime") as mock_dt:
-        mock_dt.now.return_value = datetime.now(timezone.utc) + timedelta(minutes=1)
-        with pytest.raises(AuthenticationError):
-            await jwt_service.validate_access_token(token.token) 
+    # Create a token manually with already expired expiration time
+    from datetime import datetime, timezone, timedelta
+    import jwt
+    from src.core.config.settings import settings
+    
+    # Create an expired token payload
+    exp_time = datetime.now(timezone.utc) - timedelta(minutes=1)  # 1 minute ago
+    payload = {
+        "sub": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "role": user.role.value,
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
+        "exp": int(exp_time.timestamp()),
+        "iat": int(datetime.now(timezone.utc).timestamp()),
+        "jti": "test-token-id"
+    }
+    
+    # Create the expired token
+    expired_token = jwt.encode(
+        payload,
+        settings.JWT_PRIVATE_KEY.get_secret_value(),
+        algorithm="RS256"
+    )
+    
+    # Try to validate the expired token
+    with pytest.raises(AuthenticationError):
+        await jwt_service.validate_access_token(expired_token) 

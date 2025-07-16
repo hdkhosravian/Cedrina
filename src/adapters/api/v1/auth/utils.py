@@ -184,10 +184,10 @@ async def handle_authentication_error(
     # Handle domain-specific exceptions that should be re-raised as-is
     from src.common.exceptions import (
         DuplicateUserError, PasswordPolicyError, UserNotFoundError,
-        PasswordResetError, ForgotPasswordError, RateLimitExceededError
+        PasswordResetError, ForgotPasswordError, RateLimitExceededError, ValidationError, InvalidCredentialsError
     )
     
-    if isinstance(error, (DuplicateUserError, PasswordPolicyError, UserNotFoundError, PasswordResetError, ForgotPasswordError, RateLimitExceededError)):
+    if isinstance(error, (DuplicateUserError, PasswordPolicyError, UserNotFoundError, PasswordResetError, ForgotPasswordError, RateLimitExceededError, ValidationError, InvalidCredentialsError)):
         # Log the domain-specific error with security context
         request_logger.warning(
             "Authentication failed - domain error",

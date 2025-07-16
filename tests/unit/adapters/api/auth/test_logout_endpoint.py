@@ -20,13 +20,16 @@ from src.domain.interfaces import IUserLogoutService
 
 
 @pytest.fixture
-def mock_request():
+def mock_request(valid_access_token):
     """Mock FastAPI request with language state."""
     request = AsyncMock()
     request.state.language = "es"  # Spanish for testing i18n
     request.state.client_ip = "192.168.1.100"
     request.state.correlation_id = "test-correlation-123"
-    request.headers = {"User-Agent": "Test-Agent/1.0"}
+    request.headers = {
+        "User-Agent": "Test-Agent/1.0",
+        "Authorization": f"Bearer {valid_access_token.credentials}"
+    }
     return request
 
 
@@ -88,13 +91,15 @@ class TestLogoutEndpoint:
         self, mock_request, mock_user, mock_logout_service, valid_refresh_token, valid_access_token
     ):
         """Test successful logout with internationalization support."""
-        # Arrange - Set up Spanish language in request headers
-        mock_request.headers = {"accept-language": "es"}
+        # Arrange - Set up Spanish language in request headers but keep Authorization header
+        mock_request.headers = {
+            "accept-language": "es",
+            "Authorization": f"Bearer {valid_access_token.credentials}"
+        }
         
         # Act
         result = await logout_user(
             request=mock_request,
-            token=valid_access_token,
             current_user=mock_user,
             logout_service=mock_logout_service,
             error_classification_service=AsyncMock(),
@@ -117,7 +122,6 @@ class TestLogoutEndpoint:
         # Act
         await logout_user(
             request=mock_request,
-            token=valid_access_token,
             current_user=mock_user,
             logout_service=mock_logout_service,
             error_classification_service=AsyncMock(),
@@ -142,7 +146,6 @@ class TestLogoutEndpoint:
         with pytest.raises(AuthenticationError, match="Invalid refresh token"):
             await logout_user(
                 request=mock_request,
-                token=valid_access_token,
                 current_user=mock_user,
                 logout_service=mock_logout_service,
                 error_classification_service=mock_error_service,
@@ -154,7 +157,6 @@ class TestLogoutEndpoint:
         # Act - Should return success even with invalid token
         result = await logout_user(
             request=mock_request,
-            token=valid_access_token,
             current_user=mock_user,
             logout_service=mock_logout_service,
             error_classification_service=AsyncMock(),
@@ -168,18 +170,17 @@ class TestLogoutEndpoint:
         self, mock_user, mock_logout_service, valid_refresh_token, valid_access_token
     ):
         """Test logout with fallback language when language is not set."""
-        # Arrange - request without language state
+        # Arrange - request without language state but with required Authorization header
         request = AsyncMock()
         request.state = AsyncMock()
         request.state.language = None  # No language state
         request.state.client_ip = ""
         request.state.correlation_id = ""
-        request.headers = {}
+        request.headers = {"Authorization": f"Bearer {valid_access_token.credentials}"}
 
         # Act
         result = await logout_user(
             request=request,
-            token=valid_access_token,
             current_user=mock_user,
             logout_service=mock_logout_service,
             error_classification_service=AsyncMock(),
@@ -204,7 +205,6 @@ class TestLogoutEndpoint:
         with pytest.raises(AuthenticationError, match="Service error"):
             await logout_user(
                 request=mock_request,
-                token=valid_access_token,
                 current_user=mock_user,
                 logout_service=mock_logout_service,
                 error_classification_service=mock_error_service,

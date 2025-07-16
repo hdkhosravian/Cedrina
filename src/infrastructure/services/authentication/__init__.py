@@ -19,10 +19,12 @@ from .jwt_service import JWTService
 from .unified_session_service import UnifiedSessionService
 from .oauth import OAuthService
 from .domain_token_service import DomainTokenService
+from .password_encryption import PasswordEncryptionService
 
 __all__ = [
     "JWTService",
     "UnifiedSessionService", 
     "OAuthService",
     "DomainTokenService",
+    "PasswordEncryptionService",
 ] 

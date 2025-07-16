@@ -101,23 +101,33 @@ async def register_user(
             user_id=user.id,
             username_masked=secure_logging_service.mask_username(user.username),
             email_masked=secure_logging_service.mask_email(user.email),
+            is_active=user.is_active,
+            email_confirmed=user.email_confirmed,
             security_enhanced=True
         )
         
-        # Generate JWT tokens for authenticated session using utility function
-        tokens = await create_token_pair(token_service, user, correlation_id)
+        # Only generate JWT tokens if user is active (email confirmation disabled or completed)
+        tokens = None
+        if user.is_active:
+            tokens = await create_token_pair(token_service, user, correlation_id)
+            
+            request_logger.info(
+                "Registration tokens created",
+                user_id=user.id,
+                token_type=tokens.token_type,
+                expires_in=tokens.expires_in,
+                security_enhanced=True
+            )
+        else:
+            request_logger.info(
+                "User created but inactive - email confirmation required",
+                user_id=user.id,
+                security_enhanced=True
+            )
         
-        request_logger.info(
-            "Registration tokens created",
-            user_id=user.id,
-            token_type=tokens.token_type,
-            expires_in=tokens.expires_in,
-            security_enhanced=True
-        )
-        
-        # Return user data and tokens
+        # Return user data and tokens (tokens will be None if email confirmation required)
         return AuthResponse(
-            tokens=tokens.dict(),
+            tokens=tokens,
             user=UserOut.from_entity(user)
         )
         

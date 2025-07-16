@@ -18,6 +18,8 @@ from src.domain.value_objects.security_context import SecurityContext
 from src.domain.value_objects.password import LoginPassword, Password
 from src.domain.entities.user import User
 from src.domain.entities.oauth_profile import OAuthProfile
+from src.common.exceptions import ValidationError, InvalidCredentialsError
+from src.common.i18n import get_translated_message
 
 from .unified.context import AuthenticationContext, AuthenticationMetrics
 from .unified.flow_executor import AuthenticationFlowExecutor
@@ -167,14 +169,10 @@ class UnifiedAuthenticationService(
                 failure_reason="invalid_credentials",
                 context=context
             )
-            error_response = await self._error_standardizer.create_authentication_error_response(
-                actual_failure_reason="invalid_credentials",
-                username=str(username),
-                correlation_id=context.correlation_id,
-                language=context.language,
-                request_start_time=time.time()
-            )
-            raise AuthenticationError(error_response["detail"])
+            
+            # Use InvalidCredentialsError for authentication failures (401)
+            # This properly indicates wrong username/password vs validation errors (422)
+            raise InvalidCredentialsError(get_translated_message("invalid_username_or_password", context.language))
         if not user.is_active:
             await self._event_handler.handle_authentication_failure(
                 username=username,

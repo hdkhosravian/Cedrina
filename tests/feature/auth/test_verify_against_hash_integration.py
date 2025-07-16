@@ -10,6 +10,7 @@ import uuid
 
 from src.domain.value_objects.password import Password
 from src.utils.security import hash_password, verify_password
+from src.common.exceptions import PasswordPolicyError
 
 
 class TestVerifyAgainstHashIntegration:
@@ -197,6 +198,6 @@ class TestVerifyAgainstHashIntegration:
                 wrong_result = wrong_password_obj.verify_against_hash(hashed)
                 assert wrong_result is False, f"verify_against_hash should reject wrong password for: {test_password!r}"
                     
-            except ValueError:
+            except (ValueError, PasswordPolicyError):
                 # Some passwords might not meet password policy requirements, that's okay
                 continue 
