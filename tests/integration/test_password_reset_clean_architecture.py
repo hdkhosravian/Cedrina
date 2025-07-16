@@ -10,8 +10,9 @@ import re
 
 import pytest
 from pydantic import EmailStr
+from src.common.exceptions import ValidationError
 
-from src.common.exceptions import PasswordResetError, RateLimitExceededError
+from src.common.exceptions import PasswordResetError, RateLimitExceededError, TokenFormatError
 from src.domain.entities.user import User
 from src.domain.events.password_reset_events import (
     PasswordResetRequestedEvent,
@@ -234,12 +235,12 @@ class TestPasswordResetIntegration:
     ):
         """Test that invalid token formats are rejected."""
         # Act & Assert
-        with pytest.raises(PasswordResetError):
+        with pytest.raises(TokenFormatError):
             await password_reset_service.reset_password(
                 token="invalid_token",
                 new_password="NewPassword123!",
             )
-    
+
     @pytest.mark.asyncio
     async def test_weak_password_rejected(
         self,
@@ -247,7 +248,7 @@ class TestPasswordResetIntegration:
         mock_user_repository,
         test_user,
     ):
-        """Test that weak passwords are rejected during reset."""
+        """Test that weak passwords are rejected during reset (expected ValidationError)."""
         # Arrange
         token = ResetToken.generate()
         test_user.password_reset_token = token.value
@@ -256,12 +257,12 @@ class TestPasswordResetIntegration:
         mock_user_repository.get_by_reset_token.return_value = test_user
         
         # Act & Assert
-        with pytest.raises(PasswordResetError):
+        with pytest.raises(ValidationError, match="Password must be at least 8 characters long"):
             await password_reset_service.reset_password(
                 token=token.value,
                 new_password="weak",  # Too weak
             )
-    
+
     @pytest.mark.asyncio
     async def test_security_events_are_published(
         self,
@@ -337,7 +338,7 @@ class TestPasswordResetIntegration:
         assert any(not c.isalnum() for c in token.value)
         
         # Test token format validation
-        with pytest.raises(ValueError):
+        with pytest.raises(TokenFormatError):
             ResetToken.from_existing("invalid", datetime.now(timezone.utc))
     
     def test_event_publisher_tracks_all_events(self, event_publisher):
@@ -371,7 +372,7 @@ class TestArchitecturalBenefits:
             Password(value="")
         
         # Tokens must be properly formatted
-        with pytest.raises(ValueError):
+        with pytest.raises(TokenFormatError):
             ResetToken.from_existing("", datetime.now(timezone.utc))
         
         # Rate limits must have positive values

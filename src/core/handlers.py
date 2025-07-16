@@ -27,6 +27,7 @@ from src.common.exceptions import (
     PasswordValidationError,
     PermissionError,
     RateLimitExceededError,
+    TokenFormatError,
     UserNotFoundError,
     ValidationError,
 )
@@ -428,6 +429,26 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
     )
 
 
+async def token_format_error_handler(request: Request, exc: TokenFormatError) -> JSONResponse:
+    """Handles `TokenFormatError`, returning a `422 Unprocessable Entity`.
+
+    This error occurs when a token format is invalid (e.g., wrong length,
+    invalid characters, malformed structure).
+
+    Args:
+        request: The incoming `Request` object.
+        exc: The `TokenFormatError` instance.
+
+    Returns:
+        A `JSONResponse` with a 422 status code and error detail.
+    """
+    locale = extract_language_from_request(request)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": get_translated_message(str(exc), locale)},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Registers all custom exception handlers with the FastAPI application.
 
@@ -450,6 +471,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         PasswordValidationError, password_validation_error_handler
     )
+    app.add_exception_handler(TokenFormatError, token_format_error_handler)
     app.add_exception_handler(ForgotPasswordError, forgot_password_error_handler)
     app.add_exception_handler(PasswordResetError, password_reset_error_handler)
     app.add_exception_handler(EmailServiceError, email_service_error_handler)

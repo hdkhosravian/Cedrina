@@ -561,7 +561,9 @@ class TestTokenFamilyRepositoryIntegration:
         # Test retrieval performance
         start_time = time.time()
         
-        retrieved_families = await token_family_repository.get_user_families(12345, limit=50)
+        # Query for one of the actual users that has families
+        user_with_families = test_users[0].id
+        retrieved_families = await token_family_repository.get_user_families(user_with_families, limit=50)
         
         retrieval_time = time.time() - start_time
         

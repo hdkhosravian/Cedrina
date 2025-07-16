@@ -30,6 +30,7 @@ __all__: Final = [
     "ForgotPasswordError",
     "UserNotFoundError",
     "ValidationError",
+    "TokenFormatError",
     "SessionLimitExceededError",
     "EncryptionError",
     "DecryptionError",
@@ -64,6 +65,15 @@ class PermissionError(CedrinaError):
 
 class ValidationError(CedrinaError):
     def __init__(self, message: str, code: str = "validation_error"):
+        super().__init__(message, code)
+
+class TokenFormatError(ValidationError):
+    """Raised when a token format is invalid (e.g., wrong length, invalid characters).
+    
+    This exception is specifically for token format validation errors that should
+    return HTTP 422 Unprocessable Entity instead of HTTP 400 Bad Request.
+    """
+    def __init__(self, message: str, code: str = "token_format_error"):
         super().__init__(message, code)
 
 class PasswordValidationError(ValidationError):

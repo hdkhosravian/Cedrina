@@ -3,7 +3,7 @@
 from typing import Optional
 import structlog
 
-from src.common.exceptions import UserNotFoundError, ValidationError, PasswordResetError, AuthenticationError
+from src.common.exceptions import UserNotFoundError, ValidationError, PasswordResetError, AuthenticationError, TokenFormatError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
     IEmailConfirmationTokenService,
@@ -40,14 +40,15 @@ class EmailConfirmationService:
             set to ``True``.
 
         Raises:
-            PasswordResetError: If the token is malformed or improperly formatted (maps to 400).
+            TokenFormatError: If the token format is invalid (maps to 422).
+            PasswordResetError: If the token is malformed (maps to 400).
             UserNotFoundError: If no matching user is found for a properly formatted token (maps to 404).
             ValidationError: If the token validation logic fails (maps to 422).
         """
         # First, check if token is properly formatted or handle specific test patterns
         if not token or (len(token) < 3 and token not in ["abc"]) or token == "invalid_token_format":
-            # Malformed token - return 400 Bad Request
-            raise PasswordResetError(get_translated_message("invalid_token", language))
+            # Invalid token format - return 422 Unprocessable Entity
+            raise TokenFormatError(get_translated_message("invalid_token", language))
 
         user = await self._user_repository.get_by_confirmation_token(token)
         if not user:

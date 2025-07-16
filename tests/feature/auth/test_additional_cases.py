@@ -40,36 +40,40 @@ async def test_user_login_with_whitespace(async_client):
 
 @pytest.mark.asyncio
 async def test_password_reset_token_expiration_400_scenario(async_client):
-    """Test password reset with expired token that returns 400"""
-    data = _unique_user_data()
-    await async_client.post("/api/v1/auth/register", json=data)
-    
-    # Request password reset
-    forgot_resp = await async_client.post("/api/v1/auth/forgot-password", json={"email": data["email"]})
-    assert forgot_resp.status_code == 200
-    
-    # Create a properly formatted but expired/invalid token (64 chars for validation)
-    expired_token = "a" * 64  # Valid length but invalid content -> PasswordResetError -> 400
-    
-    resp = await async_client.post(
+    """Test password reset with expired token (should return 401)."""
+    # Arrange
+    expired_token = "expired_token_12345"
+    new_password = "NewPassword123!"
+
+    # Act
+    response = await async_client.post(
         "/api/v1/auth/reset-password",
-        json={"token": expired_token, "new_password": "NewPass123!"},
+        json={"token": expired_token, "new_password": new_password},
     )
-    assert resp.status_code == 400
+
+    # Assert - Expired token should return 401 Unauthorized
+    assert response.status_code == 401
+    response_data = response.json()
+    assert "detail" in response_data
 
 
 @pytest.mark.asyncio
 async def test_password_reset_token_expiration_401_scenario(async_client):
-    """Test password reset with expired token that returns 401"""
-    # This test name suggests 401, but password reset typically returns 400 for invalid tokens
-    # Let's test a different 401 scenario - invalid authentication
-    # Skip authentication and test direct access without proper setup
-    resp = await async_client.post(
+    """Test password reset with expired token (should return 401)."""
+    # Arrange
+    expired_token = "expired_token_67890"
+    new_password = "NewPassword123!"
+
+    # Act
+    response = await async_client.post(
         "/api/v1/auth/reset-password",
-        json={"token": "b" * 64, "new_password": "NewPass123!"},  # Valid format but no auth context
+        json={"token": expired_token, "new_password": new_password},
     )
-    # This should return 400 since PasswordResetError maps to 400, not 401
-    assert resp.status_code == 400
+
+    # Assert - Expired token should return 401 Unauthorized
+    assert response.status_code == 401
+    response_data = response.json()
+    assert "detail" in response_data
 
 
 @pytest.mark.asyncio

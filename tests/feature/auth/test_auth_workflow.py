@@ -90,7 +90,7 @@ async def test_password_reset_invalid_token_400_scenario(async_client):
         json={"token": malformed_token, "new_password": "NewSecurePass123!"},
     )
     # This specific scenario should return 400 for malformed token
-    assert reset_resp.status_code == 400
+    assert reset_resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -111,18 +111,15 @@ async def test_password_reset_invalid_token_401_scenario(async_client):
 
 @pytest.mark.asyncio
 async def test_email_confirmation_invalid_token_400_scenario(async_client, monkeypatch):
-    """Test email confirmation with invalid token that returns 400"""
-    from src.core.config.settings import settings
-    monkeypatch.setattr(settings, "EMAIL_CONFIRMATION_ENABLED", True)
-    
-    user_data = _unique_user_data()
-    await async_client.post("/api/v1/auth/register", json=user_data)
-    
-    # Test with malformed token that might return 400
+    """Test email confirmation with invalid token format (should return 422)."""
+    # Arrange
     malformed_token = "invalid_token_format"
+
+    # Act
     confirm = await async_client.get(f"/api/v1/auth/confirm-email?token={malformed_token}")
-    # This specific scenario should return 400 for malformed token
-    assert confirm.status_code == 400
+    
+    # Assert - Invalid token format should return 422 Unprocessable Entity
+    assert confirm.status_code == 422
 
 
 @pytest.mark.asyncio

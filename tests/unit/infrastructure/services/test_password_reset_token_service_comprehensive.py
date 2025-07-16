@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.common.exceptions import RateLimitExceededError, AuthenticationError
+from src.common.exceptions import RateLimitExceededError, AuthenticationError, TokenFormatError
 from src.domain.entities.user import User
 from src.common.security import IRateLimitingService
 from src.domain.value_objects.reset_token import ResetToken
@@ -444,19 +444,17 @@ class TestEnhancedPasswordResetTokenServiceErrorHandling:
             with pytest.raises(AuthenticationError):
                 await token_service.generate_token(test_user)
     
-    def test_validate_token_handles_validation_error(self, test_user):
-        """Test handling of token validation errors."""
+    def test_validate_token_handles_validation_error(self, token_service_with_rate_limiting, test_user):
+        """Test that validate_token properly handles TokenFormatError."""
         # Arrange
-        token_service = PasswordResetTokenService()
-        test_user.password_reset_token = "invalid_token_format"
-        test_user.password_reset_token_expires_at = datetime.now(timezone.utc)
-        
-        # Act
-        is_valid = token_service.validate_token(test_user, "any_token")
-        
-        # Assert - should return False on validation error
-        assert is_valid is False
-    
+        # Mock the user to have an invalid token format
+        test_user.password_reset_token = "invalid_token"  # Missing uppercase
+        test_user.password_reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+        # Act & Assert
+        with pytest.raises(AuthenticationError, match="validate_token_infrastructure_error"):
+            token_service_with_rate_limiting.validate_token(test_user, "any_token")
+
     def test_invalidate_token_handles_error(self, test_user):
         """Test handling of token invalidation errors - should wrap in AuthenticationError."""
         # Arrange
@@ -470,18 +468,16 @@ class TestEnhancedPasswordResetTokenServiceErrorHandling:
             with pytest.raises(AuthenticationError):
                 token_service.invalidate_token(test_user, "test_reason")
     
-    def test_get_time_remaining_handles_error(self, test_user):
-        """Test handling of time remaining calculation errors."""
+    def test_get_time_remaining_handles_error(self, token_service_with_rate_limiting, test_user):
+        """Test that get_time_remaining properly handles TokenFormatError."""
         # Arrange
-        token_service = PasswordResetTokenService()
-        test_user.password_reset_token = "invalid_token"
-        test_user.password_reset_token_expires_at = datetime.now(timezone.utc)
-        
-        # Act
-        remaining = token_service.get_time_remaining(test_user)
-        
-        # Assert - should return None on error
-        assert remaining is None
+        # Mock the user to have an invalid token format
+        test_user.password_reset_token = "invalid_token"  # Missing uppercase
+        test_user.password_reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+        # Act & Assert
+        with pytest.raises(AuthenticationError, match="get_time_remaining_infrastructure_error"):
+            token_service_with_rate_limiting.get_time_remaining(test_user)
 
 
 class TestEnhancedPasswordResetTokenServiceSecurity:

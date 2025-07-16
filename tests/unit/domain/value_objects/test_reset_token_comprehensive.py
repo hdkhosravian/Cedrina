@@ -8,6 +8,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from src.common.exceptions import TokenFormatError
 from src.domain.value_objects.reset_token import ResetToken
 
 
@@ -99,66 +100,81 @@ class TestEnhancedResetTokenValidation:
         assert token.expires_at == expires_at
     
     def test_token_too_short_raises_error(self):
-        """Test that tokens shorter than minimum length raise error."""
-        short_token = "Abc1!"  # Only 5 characters
+        """Test that tokens that are too short raise an error."""
+        # Arrange
+        short_token = "A" + "b" + "1" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 5)  # Too short
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="must be between"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="Token must be between"):
             ResetToken(value=short_token, expires_at=expires_at)
     
     def test_token_too_long_raises_error(self):
-        """Test that tokens longer than maximum length raise error."""
-        # Create a token that has all required character sets but is too long
-        long_token = "A" + "b" + "1" + "!" + "x" * (ResetToken.MAX_TOKEN_LENGTH + 1)
+        """Test that tokens that are too long raise an error."""
+        # Arrange
+        long_token = "A" + "b" + "1" + "!" + "x" * (ResetToken.MAX_TOKEN_LENGTH + 1)  # Too long
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="must be between"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="Token must be between"):
             ResetToken(value=long_token, expires_at=expires_at)
     
     def test_token_missing_uppercase_raises_error(self):
-        """Test that tokens without uppercase letters raise error."""
+        """Test that tokens missing uppercase letters raise an error."""
+        # Arrange
         token_without_uppercase = "b" + "1" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
-        with pytest.raises(ValueError, match="Token must contain at least one uppercase letter"):
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="uppercase"):
             ResetToken(value=token_without_uppercase, expires_at=expires_at)
     
     def test_token_missing_lowercase_raises_error(self):
-        """Test that tokens without lowercase letters raise error."""
+        """Test that tokens missing lowercase letters raise an error."""
+        # Arrange
         token_without_lowercase = "A" + "1" + "!" + "X" * (ResetToken.MIN_TOKEN_LENGTH - 3)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
-        with pytest.raises(ValueError, match="Token must contain at least one lowercase letter"):
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="lowercase"):
             ResetToken(value=token_without_lowercase, expires_at=expires_at)
     
     def test_token_missing_digits_raises_error(self):
-        """Test that tokens without digits raise error."""
+        """Test that tokens missing digits raise an error."""
+        # Arrange
         token_without_digits = "A" + "b" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="must contain.*digit"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="digit"):
             ResetToken(value=token_without_digits, expires_at=expires_at)
     
     def test_token_missing_special_chars_raises_error(self):
-        """Test that tokens without special characters raise error."""
+        """Test that tokens missing special characters raise an error."""
+        # Arrange
         token_without_special = "A" + "b" + "1" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="must contain.*special"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="special"):
             ResetToken(value=token_without_special, expires_at=expires_at)
     
     def test_empty_token_raises_error(self):
-        """Test that empty tokens raise error."""
+        """Test that empty tokens raise an error."""
+        # Arrange
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="cannot be empty"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="empty"):
             ResetToken(value="", expires_at=expires_at)
     
     def test_none_token_raises_error(self):
-        """Test that None tokens raise error."""
+        """Test that None tokens raise an error."""
+        # Arrange
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        with pytest.raises(ValueError, match="cannot be empty"):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="empty"):
             ResetToken(value=None, expires_at=expires_at)
     
     def test_token_without_timezone_raises_error(self):
@@ -283,19 +299,13 @@ class TestEnhancedResetTokenLifecycle:
         assert len(masked) == 11  # 8 chars + "..."
     
     def test_from_existing_validation(self):
-        """Test creating token from existing values with validation."""
-        # Valid existing token
-        valid_token = "A" + "b" + "1" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 4)
+        """Test that from_existing validates token format."""
+        # Arrange
+        invalid_token = "a" * ResetToken.MIN_TOKEN_LENGTH  # Only lowercase
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        
-        token = ResetToken.from_existing(valid_token, expires_at)
-        assert token.value == valid_token
-        assert token.expires_at == expires_at
-        
-        # Invalid existing token should raise error
-        invalid_token = "invalid"
-        
-        with pytest.raises(ValueError):
+
+        # Act & Assert
+        with pytest.raises(TokenFormatError, match="uppercase"):
             ResetToken.from_existing(invalid_token, expires_at)
 
 

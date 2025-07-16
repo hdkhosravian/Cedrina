@@ -45,8 +45,23 @@ async def test_validate_token_success(jwt_service, user):
 @pytest.mark.asyncio
 async def test_validate_token_tampered(jwt_service, user):
     access_token = await jwt_service.create_access_token(user)
-    # Tamper with the token
-    tampered = access_token.token[:-1] + ("A" if access_token.token[-1] != "A" else "B")
+    # Tamper with the token by changing multiple characters in the middle
+    # This ensures the signature validation will fail
+    token_parts = access_token.token.split('.')
+    if len(token_parts) == 3:  # Valid JWT has 3 parts
+        # Tamper with the payload (second part)
+        payload = token_parts[1]
+        # Change a character in the middle of the payload
+        if len(payload) > 10:
+            tampered_payload = payload[:len(payload)//2] + "X" + payload[len(payload)//2+1:]
+            tampered = f"{token_parts[0]}.{tampered_payload}.{token_parts[2]}"
+        else:
+            # Fallback: just change the last character
+            tampered = access_token.token[:-1] + ("A" if access_token.token[-1] != "A" else "B")
+    else:
+        # Fallback: just change the last character
+        tampered = access_token.token[:-1] + ("A" if access_token.token[-1] != "A" else "B")
+    
     with pytest.raises(AuthenticationError):
         await jwt_service.validate_token(tampered)
 
