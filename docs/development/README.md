@@ -359,8 +359,8 @@ async def test_brute_force_attack_detection(async_client):
         response = await async_client.post("/api/v1/auth/login", json={
             "username": "testuser",
             "password": "WrongPassword123!"
-        })
-        
+    })
+    
         if i < 5:
             assert response.status_code == 401
         else:
@@ -488,7 +488,7 @@ class PasswordChangeService(IPasswordChangeService, BaseAuthenticationService):
                 "old_password": old_password,
                 "new_password": new_password
             }, ctx)
-            
+        
             # Step 2: Retrieve and validate user
             user = await self._get_and_validate_user(user_id, ctx)
             
@@ -498,7 +498,7 @@ class PasswordChangeService(IPasswordChangeService, BaseAuthenticationService):
             
             # Step 4: Verify old password
             await self._verify_old_password(user, old_password_obj, ctx)
-            
+        
             # Step 5: Check password reuse
             self._check_password_reuse(old_password_obj, new_password_obj, ctx)
             

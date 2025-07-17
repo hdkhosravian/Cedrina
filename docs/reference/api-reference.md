@@ -33,16 +33,16 @@ Content-Type: application/json
 #### Register/Login/OAuth Example
 ```json
 {
-  "user": {
-    "id": 123,
-    "username": "john_doe",
-    "email": "john@example.com",
+    "user": {
+      "id": 123,
+      "username": "john_doe",
+      "email": "john@example.com",
     "full_name": null,
-    "is_active": true,
+      "is_active": true,
     "created_at": "2025-01-15T10:30:00Z",
     "updated_at": null,
     "roles": []
-  },
+    },
   "tokens": {
     "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
     "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
