@@ -15,7 +15,7 @@ Cedrina is a production-ready authentication and authorization platform built wi
 - **Token Family Security**: Advanced reuse detection and family-wide revocation on compromise
 - **Zero-Trust Validation**: Comprehensive token validation with threat detection
 - **Defense-in-Depth**: Multi-layered security with encrypted storage and audit trails
-- **Rate Limiting**: Sophisticated rate limiting with multiple algorithms and abuse prevention
+- **Rate Limiting**: Sophisticated rate limiting with multiple algorithms and bypass detection
 
 ### **Authentication & Authorization**
 - **Multi-Provider OAuth**: Google, Microsoft, and Facebook integration
@@ -335,11 +335,12 @@ make run-dev-local
 - [Testing Strategy](docs/architecture/testing-strategy.md) - Comprehensive testing approach
 
 ### **Features & Functionality**
-- [Authentication](docs/features/authentication/) - User authentication flows
-- [Authorization](docs/features/authorization/) - Access control and permissions
-- [Token Management](docs/features/token-management/) - JWT and session handling
-- [Email Services](docs/features/email-services/) - Email confirmation and notifications
-- [Rate Limiting](docs/features/rate-limiting/) - Abuse prevention and protection
+- [Features Overview](docs/features/README.md) - Complete feature overview and integration
+- [Authentication System](docs/features/authentication/README.md) - User authentication flows
+- [Authorization System](docs/features/authorization/README.md) - Access control and permissions
+- [Token Management](docs/features/token-management/README.md) - JWT and session handling
+- [Email Services](docs/features/email-services/README.md) - Email confirmation and notifications
+- [Rate Limiting](docs/features/rate-limiting/README.md) - Abuse prevention and protection
 
 ### **Development & Deployment**
 - [Development Guide](docs/development/README.md) - Development workflow and best practices
