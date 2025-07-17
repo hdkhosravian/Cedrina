@@ -220,7 +220,7 @@ class TestUserLogoutService:
         # Arrange
         correlation_id = "test-correlation-id"
         issued_at = int(datetime.now(timezone.utc).timestamp())
-        mock_access_token.claims = {'iat': issued_at}
+        mock_access_token.claims = {'iat': issued_at, 'sub': '1', 'jti': 'test-jti'}
         
         # Act
         await service.logout_user(
@@ -450,7 +450,7 @@ class TestUserLogoutService:
         """Test complete user logout workflow scenario."""
         # Arrange
         issued_at = int((datetime.now(timezone.utc) - timedelta(minutes=30)).timestamp())
-        mock_access_token.claims = {'iat': issued_at}
+        mock_access_token.claims = {'iat': issued_at, 'sub': '1', 'jti': 'test-jti'}
         
         # Act - Simulate user logout after security alert
         await service.logout_user(
@@ -494,7 +494,7 @@ class TestUserLogoutService:
             valid_token_id = create_valid_token_id()
             mock_access_token = MagicMock(spec=AccessToken)
             mock_access_token.get_token_id.return_value = TokenId(valid_token_id)
-            mock_access_token.claims = {'iat': issued_at}
+            mock_access_token.claims = {'iat': issued_at, 'sub': '1', 'jti': valid_token_id}
             
             # Act
             await service.logout_user(
@@ -518,13 +518,13 @@ class TestUserLogoutService:
         """Test user logout with invalid session duration scenarios."""
         invalid_scenarios = [
             # No iat claim
-            {},
+            {'sub': '1', 'jti': 'test-jti'},
             # Invalid iat value
-            {'iat': 'invalid'},
+            {'iat': 'invalid', 'sub': '1', 'jti': 'test-jti'},
             # Future iat value
-            {'iat': int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())},
+            {'iat': int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()), 'sub': '1', 'jti': 'test-jti'},
             # Very old iat value (more than 1 year)
-            {'iat': int((datetime.now(timezone.utc) - timedelta(days=400)).timestamp())},
+            {'iat': int((datetime.now(timezone.utc) - timedelta(days=400)).timestamp()), 'sub': '1', 'jti': 'test-jti'},
         ]
         
         for claims in invalid_scenarios:

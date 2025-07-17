@@ -114,6 +114,19 @@ class ITokenService(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def revoke_refresh_token_by_jti(self, jti: str, language: str = "en") -> None:
+        """Revokes a refresh token by its JTI.
+
+        This method finds the associated refresh token using the JTI and revokes it.
+        This is useful for logout scenarios where we only have the access token.
+
+        Args:
+            jti: The unique identifier (jti claim) of the token pair to revoke.
+            language: The language for any potential error messages.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     async def revoke_access_token(
         self, jti: str, expires_in: Optional[int] = None
     ) -> None:
@@ -179,6 +192,32 @@ class ITokenService(ABC):
         Raises:
             AuthenticationError: If tokens are invalid, expired, or don't match.
             SecurityViolationError: If JTI mismatch or cross-user attack detected.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def revoke_token_family(
+        self,
+        family_id: str,
+        reason: str = "Manual revocation",
+        correlation_id: Optional[str] = None
+    ) -> bool:
+        """Revokes an entire token family for enhanced security.
+
+        This method implements the token family security pattern where
+        all tokens in a family are revoked simultaneously. This provides
+        enhanced security for logout operations.
+
+        Args:
+            family_id: The unique identifier of the token family to revoke.
+            reason: Reason for revocation (for audit purposes).
+            correlation_id: Request correlation ID for tracking.
+
+        Returns:
+            bool: True if family was found and revoked, False if not found.
+
+        Raises:
+            AuthenticationError: If revocation fails due to system error.
         """
         raise NotImplementedError
 

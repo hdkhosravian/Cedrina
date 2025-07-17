@@ -112,8 +112,6 @@ msgstr "خروج به دلیل خطای داخلی ناموفق بود"
 msgid "logout_successful"
 msgstr "خروج با موفقیت انجام شد"
 
-# Change password functionality (2025-06-28)
-
 msgid "user_not_found"
 msgstr "کاربر یافت نشد"
 
@@ -135,7 +133,29 @@ msgstr "سرویس تغییر رمز عبور موقتاً در دسترس نی�
 msgid "missing_authorization_header"
 msgstr "هدر احراز هویت موجود نیست"
 
-# Email functionality (2025-06-28)
+msgid "invalid_authorization_header"
+msgstr "فرمت هدر احراز هویت نامعتبر است. مورد انتظار: Bearer <token>"
+
+msgid "missing_refresh_token_header"
+msgstr "هدر X-Refresh-Token موجود نیست"
+
+msgid "invalid_token_format"
+msgstr "فرمت توکن نامعتبر است"
+
+msgid "validate_token_pair_infrastructure_error"
+msgstr "سرویس اعتبارسنجی توکن موقتاً در دسترس نیست"
+
+msgid "token_ownership_mismatch"
+msgstr "اعتبارسنجی مالکیت توکن با شکست مواجه شد"
+
+msgid "token_pair_mismatch"
+msgstr "عدم تطابق جفت توکن تشخیص داده شد"
+
+msgid "logout_failed_internal_error"
+msgstr "خروج از سیستم به دلیل خطای داخلی با شکست مواجه شد"
+
+msgid "revoke_refresh_token_infrastructure_error"
+msgstr "سرویس لغو توکن تجدید موقتاً در دسترس نیست"
 
 msgid "password_reset_email_subject"
 msgstr "درخواست بازیابی رمز عبور - سدرینا"
@@ -152,15 +172,11 @@ msgstr "توکن بازیابی رمز عبور نامعتبر یا منقضی �
 msgid "password_reset_success"
 msgstr "رمز عبور با موفقیت بازیابی شد"
 
-# Authentication account lockout and expiration (2025-01-27)
-
 msgid "account_locked"
 msgstr "حساب کاربری به دلیل تلاش‌های ناموفق زیاد برای ورود قفل شده است. لطفاً بعداً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
 
 msgid "expired_credentials"
 msgstr "اعتبارنامه‌های شما منقضی شده است. لطفاً رمز عبور خود را بازنشانی کنید تا ادامه دهید."
-
-# Enhanced security logging and error standardization (2025-01-27)
 
 msgid "password_reset_service_unavailable"
 msgstr "سرویس بازیابی رمز عبور موقتاً در دسترس نیست"
@@ -224,8 +240,6 @@ msgstr "بازیابی رمز عبور پیشرفته فعال است"
 
 msgid "enhanced_logout_active"
 msgstr "خروج پیشرفته فعال است"
-
-# Enhanced Token Security (2025-06-30)
 
 msgid "token_cannot_be_empty"
 msgstr "توکن نمی‌تواند خالی باشد"
@@ -338,8 +352,6 @@ msgstr "ایجاد نشست به دلیل خطای داخلی ناموفق بو�
 
 msgid "session_limit_exceeded"
 msgstr "حداکثر تعداد نشست‌های همزمان تجاوز شده است"
-
-# Password policy validation messages (2025-07-13)
 
 msgid "password_empty"
 msgstr "رمز عبور نمی‌تواند خالی باشد"

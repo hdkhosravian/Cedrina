@@ -36,6 +36,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 import structlog
 from sqlalchemy import event
+import time
 
 from src.core.config.settings import settings
 from src.core.logging import logger
@@ -78,12 +79,30 @@ engine = create_async_engine(
     echo=False,  # Disable echo for production
     future=True, 
     connect_args=conn_params,
-    pool_size=10,  # Increase pool size for concurrent tests
-    max_overflow=20,  # Allow more overflow connections
+    pool_size=settings.POSTGRES_POOL_SIZE,  # Use consistent pool size from settings
+    max_overflow=settings.POSTGRES_MAX_OVERFLOW,  # Use consistent overflow from settings
     pool_pre_ping=True,  # Verify connections before use
     pool_recycle=3600,  # Recycle connections after 1 hour
-    pool_timeout=30,  # Wait up to 30 seconds for connection
+    pool_timeout=settings.POSTGRES_POOL_TIMEOUT,  # Use consistent timeout from settings
 )
+
+# Simple query performance monitoring
+@event.listens_for(engine.sync_engine, "before_cursor_execute")
+def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Monitor query execution time for performance optimization."""
+    context._query_start_time = time.time()
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def receive_after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Log slow queries for performance monitoring."""
+    if hasattr(context, '_query_start_time'):
+        total = time.time() - context._query_start_time
+        if total > 0.1:  # Log queries taking more than 100ms
+            logger.warning(
+                "Slow query detected",
+                duration_ms=round(total * 1000, 2),
+                query=str(statement)[:200] + "..." if len(str(statement)) > 200 else str(statement)
+            )
 
 class LoggingAsyncSession(AsyncSession):
     """AsyncSession wrapper that logs all database operations with session and task tracking."""

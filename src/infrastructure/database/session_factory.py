@@ -101,6 +101,7 @@ class AsyncSessionFactoryImpl(ISessionFactory):
         self._lock = None  # Will be created lazily in the correct event loop context
         
         # Create a new engine instance for this factory with better connection pooling
+        from src.core.config.settings import settings
         url = make_url(_build_async_url())
         conn_params = {}
         self._engine = create_async_engine(
@@ -108,11 +109,11 @@ class AsyncSessionFactoryImpl(ISessionFactory):
             echo=False,  # Disable echo for better performance 
             future=True, 
             connect_args=conn_params,
-            pool_size=20,  # Larger pool size for concurrent tests
-            max_overflow=40,  # Allow more overflow connections
+            pool_size=settings.POSTGRES_POOL_SIZE,  # Use consistent pool size from settings
+            max_overflow=settings.POSTGRES_MAX_OVERFLOW,  # Use consistent overflow from settings
             pool_pre_ping=True,  # Verify connections before use
             pool_recycle=3600,  # Recycle connections after 1 hour
-            pool_timeout=60,  # Wait longer for connection availability
+            pool_timeout=settings.POSTGRES_POOL_TIMEOUT,  # Use consistent timeout from settings
             pool_reset_on_return='commit',  # Reset connections on return
         )
         

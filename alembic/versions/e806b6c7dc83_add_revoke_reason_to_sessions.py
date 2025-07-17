@@ -20,9 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    pass
+    # Add revoke_reason column to sessions table
+    op.add_column('sessions', sa.Column('revoke_reason', sa.String(255), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    pass
+    # Remove revoke_reason column from sessions table
+    op.drop_column('sessions', 'revoke_reason')

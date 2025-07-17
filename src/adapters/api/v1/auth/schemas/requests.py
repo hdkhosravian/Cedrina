@@ -115,43 +115,17 @@ class LogoutRequest(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """
-    Payload expected by ``POST /auth/refresh``.
+    Empty payload for ``POST /auth/refresh``.
     
     Implements advanced security requirement that both access and refresh tokens 
-    must be provided together and belong to the same session (same JTI).
+    must be provided in headers and belong to the same session (same JTI).
     
     Security Features:
-    - Both tokens are required (no partial refresh)
+    - Access token in Authorization header (Bearer <token>)
+    - Refresh token in X-Refresh-Token header
     - Token pairing validation ensures session integrity
-    - Comprehensive input validation with security constraints
+    - No sensitive data in request body
     """
-    
-    access_token: str = Field(
-        ...,
-        min_length=50,  # Minimum realistic JWT length
-        max_length=2048,  # Maximum reasonable JWT length to prevent abuse
-        examples=["eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"],
-        description="Current access token that must belong to same session as refresh token"
-    )
-    
-    refresh_token: str = Field(
-        ...,
-        min_length=50,  # Minimum realistic JWT length  
-        max_length=2048,  # Maximum reasonable JWT length to prevent abuse
-        examples=["eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ.signature"],
-        description="Current refresh token that must belong to same session as access token"
-    )
-    
-    @field_validator('access_token', 'refresh_token')
-    @classmethod
-    def validate_jwt_format(cls, v: str) -> str:
-        """
-        Validate basic JWT format structure for security.
-        
-        Performs basic format validation without token verification
-        to prevent obvious attack vectors and malformed payloads.
-        """
-        return validate_jwt_format(v, "token")
     
     class Config:
         """Pydantic configuration for enhanced security."""
@@ -167,10 +141,7 @@ class RefreshTokenRequest(BaseModel):
         
         # Example schema for API documentation
         schema_extra = {
-            "example": {
-                "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature",
-                "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ.signature"
-            }
+            "example": {}
         }
 
 

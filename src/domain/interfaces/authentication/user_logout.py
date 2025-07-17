@@ -40,23 +40,28 @@ class IUserLogoutService(ABC):
         self,
         access_token: AccessToken,
         user: User,
-        security_context: SecurityContext,
-        language: str = "en"
+        language: str = "en",
+        client_ip: str = None,
+        user_agent: str = None,
+        correlation_id: str = None,
     ) -> None:
-        """Logs a user out by revoking their tokens and session.
+        """Logs a user out by revoking both access and refresh tokens.
 
         This method ensures secure logout by:
         1. Validating the access token
-        2. Revoking the token and associated refresh tokens
-        3. Clearing any server-side session data
-        4. Publishing UserLoggedOut domain event
-        5. Recording security context for audit trails
+        2. Finding the associated refresh token from the access token
+        3. Revoking both tokens to prevent future use
+        4. Clearing any server-side session data
+        5. Publishing UserLoggedOut domain event
+        6. Recording security context for audit trails
 
         Args:
             access_token: The user's `AccessToken` to be revoked.
             user: The `User` entity who is logging out.
-            security_context: Validated security context for audit trails.
             language: The language for any potential messages.
+            client_ip: Client IP address for security logging.
+            user_agent: User agent string for security logging.
+            correlation_id: Correlation ID for request tracking.
 
         Raises:
             TokenRevocationError: If token revocation fails

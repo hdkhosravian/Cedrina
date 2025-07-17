@@ -112,8 +112,6 @@ msgstr "فشل تسجيل الخروج بسبب خطأ داخلي"
 msgid "logout_successful"
 msgstr "تم تسجيل الخروج بنجاح"
 
-# Change password functionality (2025-06-28)
-
 msgid "user_not_found"
 msgstr "المستخدم غير موجود"
 
@@ -135,7 +133,29 @@ msgstr "خدمة تغيير كلمة المرور غير متاحة مؤقتاً
 msgid "missing_authorization_header"
 msgstr "رأس التفويض مفقود"
 
-# Email functionality (2025-06-28)
+msgid "invalid_authorization_header"
+msgstr "تنسيق رأس التفويض غير صالح. متوقع: Bearer <token>"
+
+msgid "missing_refresh_token_header"
+msgstr "رأس X-Refresh-Token مفقود"
+
+msgid "invalid_token_format"
+msgstr "تنسيق الرمز المميز غير صالح"
+
+msgid "validate_token_pair_infrastructure_error"
+msgstr "خدمة التحقق من الرمز المميز غير متاحة مؤقتاً"
+
+msgid "token_ownership_mismatch"
+msgstr "فشل التحقق من ملكية الرمز المميز"
+
+msgid "token_pair_mismatch"
+msgstr "تم اكتشاف عدم تطابق زوج الرمز المميز"
+
+msgid "logout_failed_internal_error"
+msgstr "فشل تسجيل الخروج بسبب خطأ داخلي"
+
+msgid "revoke_refresh_token_infrastructure_error"
+msgstr "خدمة إلغاء رمز التحديث غير متاحة مؤقتاً"
 
 msgid "password_reset_email_subject"
 msgstr "طلب إعادة تعيين كلمة المرور - سيدرينا"
@@ -152,15 +172,11 @@ msgstr "رمز إعادة تعيين كلمة المرور غير صالح أو 
 msgid "password_reset_success"
 msgstr "تم إعادة تعيين كلمة المرور بنجاح"
 
-# Authentication account lockout and expiration (2025-01-27)
-
 msgid "account_locked"
 msgstr "الحساب مقفل بسبب محاولات تسجيل دخول فاشلة كثيرة. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال بالدعم."
 
 msgid "expired_credentials"
 msgstr "انتهت صلاحية بيانات الاعتماد الخاصة بك. يرجى إعادة تعيين كلمة المرور للمتابعة."
-
-# Enhanced security logging and error standardization (2025-01-27)
 
 msgid "password_reset_service_unavailable"
 msgstr "خدمة إعادة تعيين كلمة المرور غير متاحة مؤقتاً"
@@ -224,8 +240,6 @@ msgstr "إعادة تعيين كلمة المرور المحسنة نشطة"
 
 msgid "enhanced_logout_active"
 msgstr "تسجيل الخروج المحسن نشط"
-
-# Enhanced Token Security (2025-06-30)
 
 msgid "token_cannot_be_empty"
 msgstr "لا يمكن أن يكون الرمز المميز فارغًا"
@@ -338,8 +352,6 @@ msgstr "فشل إنشاء الجلسة بسبب خطأ داخلي"
 
 msgid "session_limit_exceeded"
 msgstr "تم تجاوز الحد الأقصى لعدد الجلسات المتزامنة"
-
-# Password policy validation messages (2025-07-13)
 
 msgid "password_empty"
 msgstr "لا يمكن أن تكون كلمة المرور فارغة"

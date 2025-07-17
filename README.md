@@ -1,7 +1,7 @@
 # Cedrina - Advanced Authentication & Authorization Platform
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.113+-green.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.2+-red.svg)](https://redis.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -85,7 +85,7 @@ Cedrina is a production-ready authentication and authorization platform built wi
 ## 📦 Installation
 
 ### **Prerequisites**
-- Python 3.11+
+- Python 3.12+
 - PostgreSQL 16+
 - Redis 7.2+ (optional, for rate limiting)
 - Docker & Docker Compose (optional)
@@ -94,7 +94,7 @@ Cedrina is a production-ready authentication and authorization platform built wi
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/cedrina.git
+git clone https://github.com/hdkhosravian/cedrina.git
 cd cedrina
 
 # Start with Docker Compose
@@ -111,7 +111,7 @@ docker-compose exec api python -m src.scripts.create_admin
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/cedrina.git
+git clone https://github.com/hdkhosravian/cedrina.git
 cd cedrina
 
 # Install dependencies
@@ -122,10 +122,10 @@ cp .env.example .env
 # Edit .env with your configuration
 
 # Run database migrations
-alembic upgrade head
+make db-migrate
 
 # Start the application
-uvicorn src.main:app --reload
+make run-dev-local
 ```
 
 ## 🔧 Configuration
@@ -175,26 +175,32 @@ POST /api/v1/auth/register
 {
   "username": "john_doe",
   "email": "john@example.com",
-  "password": "secure_password"
+  "password": "SecurePassword123!"
 }
 
 # User Login
 POST /api/v1/auth/login
 {
   "username": "john_doe",
-  "password": "secure_password"
+  "password": "SecurePassword123!"
 }
 
 # Refresh Token
 POST /api/v1/auth/refresh
-{
-  "refresh_token": "your_refresh_token"
-}
+Headers: 
+  Authorization: Bearer <access_token>
+  X-Refresh-Token: <refresh_token>
+Body: {}
 
-# OAuth Login
-GET /api/v1/auth/oauth/google
-GET /api/v1/auth/oauth/microsoft
-GET /api/v1/auth/oauth/facebook
+# OAuth Authentication
+POST /api/v1/auth/oauth
+{
+  "provider": "google",
+  "token": {
+    "access_token": "...",
+    "expires_at": 1640995200
+  }
+}
 
 # Password Reset
 POST /api/v1/auth/forgot-password
@@ -203,27 +209,39 @@ POST /api/v1/auth/forgot-password
 }
 
 # Change Password
-POST /api/v1/auth/change-password
+PUT /api/v1/auth/change-password
+Headers: Authorization: Bearer <access_token>
 {
-  "current_password": "old_password",
-  "new_password": "new_secure_password"
+  "old_password": "OldPass123!",
+  "new_password": "NewPass456!"
 }
-```
-
-### **Protected Endpoints**
-
-```bash
-# Get current user
-GET /api/v1/auth/me
-Authorization: Bearer your_access_token
 
 # Logout
 POST /api/v1/auth/logout
-Authorization: Bearer your_access_token
+{
+  "refresh_token": "..."
+}
 
-# Admin endpoints
-GET /api/v1/admin/users
-Authorization: Bearer admin_access_token
+# Confirm Email
+GET /api/v1/auth/confirm-email?token=...
+
+# Resend Confirmation
+POST /api/v1/auth/resend-confirmation
+{
+  "email": "john@example.com"
+}
+```
+
+### **System Endpoints**
+
+```bash
+# Health Check (Admin only)
+GET /api/v1/health
+Headers: Authorization: Bearer <admin_access_token>
+
+# Metrics (Admin only)
+GET /api/v1/metrics
+Headers: Authorization: Bearer <admin_access_token>
 ```
 
 ## 🧪 Testing
@@ -232,7 +250,7 @@ Authorization: Bearer admin_access_token
 
 ```bash
 # Run with coverage
-pytest --cov=src --cov-report=html
+make test
 
 # Run specific test categories
 pytest tests/unit/
@@ -253,7 +271,7 @@ pytest tests/feature/
 ### **Health Check**
 
 ```bash
-GET /health
+GET /api/v1/health
 Authorization: Bearer admin_token
 
 Response:
@@ -265,18 +283,28 @@ Response:
     "database": {"status": "healthy"},
     "redis": {"status": "healthy"}
   },
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
 
-### **Monitoring Scripts**
+### **Development Commands**
 
 ```bash
-# Session monitoring
-/usr/local/bin/monitor_sessions.sh
+# Run tests
+make test
 
-# Performance metrics
-curl -H "Authorization: Bearer admin_token" /api/v1/admin/metrics
+# Format code
+make format
+
+# Run linting
+make lint
+
+# Database operations
+make db-migrate
+make db-rollback
+
+# Start development server
+make run-dev-local
 ```
 
 ## 🔒 Security Features
@@ -295,11 +323,34 @@ curl -H "Authorization: Bearer admin_token" /api/v1/admin/metrics
 
 ## 📚 Documentation
 
-- [API Reference](docs/reference/api-reference.md)
-- [Architecture Guide](docs/architecture/)
-- [Security Guide](docs/security/)
-- [Deployment Guide](docs/deployment/)
-- [Development Guide](docs/development/)
+### **Getting Started**
+- [Quick Start Guide](docs/getting-started/quick-start.md) - Get up and running quickly
+- [Installation Guide](docs/getting-started/installation-guide.md) - Detailed setup instructions
+- [Configuration Guide](docs/getting-started/configuration-guide.md) - Complete configuration reference
+
+### **Architecture & Design**
+- [Architecture Overview](docs/architecture/overview.md) - System design and principles
+- [Domain Design](docs/architecture/domain-design.md) - Domain-Driven Design implementation
+- [Security Architecture](docs/architecture/security-architecture.md) - Security patterns and features
+- [Testing Strategy](docs/architecture/testing-strategy.md) - Comprehensive testing approach
+
+### **Features & Functionality**
+- [Authentication](docs/features/authentication/) - User authentication flows
+- [Authorization](docs/features/authorization/) - Access control and permissions
+- [Token Management](docs/features/token-management/) - JWT and session handling
+- [Email Services](docs/features/email-services/) - Email confirmation and notifications
+- [Rate Limiting](docs/features/rate-limiting/) - Abuse prevention and protection
+
+### **Development & Deployment**
+- [Development Guide](docs/development/README.md) - Development workflow and best practices
+- [API Reference](docs/reference/api-reference.md) - Complete API documentation
+- [Database Schema](docs/reference/database-schema.md) - Database schema reference
+- [Error Codes](docs/reference/error-codes.md) - Error handling reference
+
+### **Advanced Topics**
+- [Security Overview](docs/security/overview.md) - Security guidelines and recommendations
+- [Performance Optimization](docs/advanced/) - Scaling and optimization techniques
+- [Monitoring & Observability](docs/advanced/) - Health checks and metrics
 
 ## 🤝 Contributing
 
@@ -315,9 +366,7 @@ poetry install --with dev
 pre-commit install
 
 # Run linting
-flake8 src/
-black src/
-isort src/
+make lint
 
 # Run type checking
 mypy src/
@@ -329,8 +378,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/cedrina/issues)
+- **Documentation**: [docs/](docs/) - Comprehensive guides and references
+- **Issues**: [GitHub Issues](https://github.com/hdkhosravian/cedrina/issues)
 - **Security**: [SECURITY.md](SECURITY.md)
 
 ## 🙏 Acknowledgments

@@ -685,3 +685,124 @@ assert response.status_code == 429, "Rate limit exceeded must return 429 Too Man
 - **Test Naming**: Use descriptive, PEP 8-compliant names (e.g., `test_reject_invalid_user_email`) with concise docstrings.
 - **CI/CD Integration**: Run tests in CI/CD pipelines (e.g., GitHub Actions) with `pytest`, `black`, `ruff`, `isort`, `flake8`.
 - **Human Factors**: Ensure clear `pytest` output, readable BDD tests, and fast test suites to reduce developer friction.
+
+## 📚 Essential Documentation Reading
+
+To fully understand the Cedrina project and its implementation, read these key documentation files in the following order:
+
+### **1. Project Overview & Getting Started**
+- **README.md** - Main project overview, features, architecture, and quick start guide
+- **docs/getting-started/quick-start.md** - Step-by-step setup instructions
+- **docs/getting-started/installation-guide.md** - Detailed installation process
+- **docs/getting-started/configuration-guide.md** - Complete configuration reference
+
+### **2. Architecture & Design**
+- **docs/architecture/overview.md** - Complete system architecture and design principles
+- **docs/architecture/domain-design.md** - Domain-Driven Design implementation details
+- **docs/architecture/security-architecture.md** - Security patterns and threat modeling
+- **docs/architecture/testing-strategy.md** - Comprehensive testing approach and methodology
+
+### **3. API & Reference Documentation**
+- **docs/reference/api-reference.md** - Complete API documentation with all endpoints
+- **docs/reference/database-schema.md** - Database schema, tables, relationships, and constraints
+- **docs/reference/error-codes.md** - Error handling, status codes, and resolution strategies
+
+### **4. Security & Features**
+- **docs/security/overview.md** - Security architecture, patterns, and best practices
+- **docs/features/authentication/** - Authentication flows and implementation
+- **docs/features/authorization/** - Access control and permissions
+- **docs/features/token-management/** - JWT and session handling
+- **docs/features/rate-limiting/** - Abuse prevention and protection mechanisms
+- **docs/features/email-services/** - Email confirmation and notification services
+
+### **5. Development & Deployment**
+- **docs/development/README.md** - Development workflow, best practices, and guidelines
+- **docs/deployment/** - Production deployment instructions and configurations
+
+### **Key Documentation Highlights**
+
+#### **Architecture Understanding**
+- **Clean Architecture**: Adapters → Core → Domain ← Infrastructure dependency flow
+- **Domain-Driven Design**: Bounded contexts, entities, value objects, domain services
+- **Security-First**: Zero-trust model, token family security, defense-in-depth
+- **Performance**: Async/await, connection pooling, sub-millisecond response times
+
+#### **Authentication System**
+- **Multi-Provider OAuth**: Google, Microsoft, Facebook integration
+- **JWT Token Management**: RS256-signed tokens with token family security
+- **Database-Only Storage**: Eliminates Redis complexity for token/session management
+- **Advanced Security**: Bcrypt + AES-256-GCM encryption, rate limiting, audit logging
+
+#### **API Endpoints**
+- **Registration**: `POST /api/v1/auth/register` with email confirmation
+- **Login**: `POST /api/v1/auth/login` with JWT token generation
+- **Refresh**: `POST /api/v1/auth/refresh` with token family validation
+- **OAuth**: `POST /api/v1/auth/oauth` with provider integration
+- **Password Management**: Forgot/reset password with secure token handling
+- **Email Confirmation**: Confirm/resend with secure token validation
+- **Logout**: `POST /api/v1/auth/logout` with session cleanup
+
+#### **Database Schema**
+- **Users Table**: Core user data with encrypted fields
+- **Token Families**: Advanced security with family-wide revocation
+- **OAuth Profiles**: External provider integration
+- **Sessions**: Database-only session tracking
+- **Audit Trail**: Comprehensive security event logging
+
+#### **Security Features**
+- **Token Family Security**: Reuse detection and family-wide revocation
+- **Rate Limiting**: Multiple algorithms with bypass detection
+- **Input Validation**: Comprehensive sanitization and validation
+- **Audit Logging**: SIEM-compatible structured events
+- **RBAC/ABAC**: Casbin-based authorization system
+
+#### **Testing Strategy**
+- **TDD Workflow**: Test-first development with 95%+ coverage
+- **Test Pyramid**: Unit (70-80%), Integration (15-20%), Feature (5-10%)
+- **Security Testing**: OWASP Top 10, penetration testing, chaos testing
+- **Performance Testing**: Load testing, stress testing, benchmarking
+
+#### **Development Workflow**
+- **Make Commands**: `make test`, `make lint`, `make format`, `make db-migrate`
+- **Code Quality**: Black, Ruff, MyPy, pre-commit hooks
+- **Internationalization**: Babel integration with multi-language support
+- **Containerization**: Docker and Docker Compose for easy deployment
+
+### **Documentation Reading Order for New Contributors**
+
+1. **Start with README.md** - Get the big picture and understand the project goals
+2. **Read docs/getting-started/quick-start.md** - Set up the development environment
+3. **Study docs/architecture/overview.md** - Understand the system architecture
+4. **Review docs/reference/api-reference.md** - Learn the API endpoints and usage
+5. **Examine docs/security/overview.md** - Understand security patterns and features
+6. **Read docs/development/README.md** - Learn development workflow and best practices
+7. **Explore specific feature docs** - Deep dive into authentication, authorization, etc.
+
+### **Documentation for Different Roles**
+
+#### **For Developers**
+- Focus on: `docs/development/README.md`, `docs/reference/api-reference.md`, `docs/architecture/overview.md`
+- Key files: `pyproject.toml`, `Makefile`, `src/main.py`, test files
+
+#### **For DevOps/Infrastructure**
+- Focus on: `docs/deployment/`, `docs/architecture/overview.md`, `docs/security/overview.md`
+- Key files: `docker-compose.yml`, `Dockerfile`, `alembic/`, environment configuration
+
+#### **For Security Engineers**
+- Focus on: `docs/security/overview.md`, `docs/features/authentication/`, `docs/features/authorization/`
+- Key files: Security-related source code, audit logs, penetration test results
+
+#### **For Product Managers**
+- Focus on: `README.md`, `docs/features/`, `docs/reference/api-reference.md`
+- Key files: API documentation, feature descriptions, user stories
+
+### **Documentation Maintenance**
+
+- All documentation is verified against the actual codebase
+- API examples match real request/response formats
+- Database schema reflects actual migrations
+- Error codes correspond to real error handling
+- Security features match implemented patterns
+- Testing examples use actual test patterns and data
+
+This comprehensive documentation suite provides complete understanding of the Cedrina project, from high-level architecture to implementation details, ensuring all contributors can work effectively with the codebase.

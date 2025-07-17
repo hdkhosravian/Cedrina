@@ -8,7 +8,7 @@ Implements clean architecture, DDD, SOLID, and advanced error handling patterns.
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, status, Header
 
 from src.infrastructure.dependency_injection.auth_dependencies import (
     get_user_logout_service,
@@ -34,7 +34,18 @@ router = APIRouter()
     status_code=status.HTTP_200_OK,
     tags=["auth"],
     summary="Logout user",
-    description="Logs out the current user and revokes their authentication tokens using clean architecture principles.",
+    description=(
+        "Logs out the current user and revokes both access and refresh tokens.\\n\\n"
+        "**REQUIRED HEADERS:**\\n"
+        "- `Authorization: Bearer <access_token>` - Your current access token\\n\\n"
+        "**SECURITY**: This endpoint automatically finds and revokes both the access token "
+        "and its associated refresh token for complete logout. This ensures both tokens "
+        "are revoked and cannot be reused, preventing security vulnerabilities.\\n\\n"
+        "**Example Headers:**\\n"
+        "```\\n"
+        "Authorization: Bearer eyJhbGciOiJSUzI1NiIs...\\n"
+        "```"
+    ),
 )
 async def logout_user(
     request: Request,
@@ -42,9 +53,9 @@ async def logout_user(
     logout_service: IUserLogoutService = Depends(get_user_logout_service),
     error_classification_service: IErrorClassificationService = Depends(get_error_classification_service),
 ) -> MessageResponse:
-    """Logout current user and revoke session tokens.
+    """Logout current user and revoke both access and refresh tokens.
     
-    Invalidates access token and terminates user session.
+    Invalidates both access and refresh tokens for complete session termination.
     Implements comprehensive security logging and error handling.
     """
     # Set up request context using centralized utility
@@ -63,24 +74,24 @@ async def logout_user(
         # Extract language from request for I18N
         language = extract_language_from_request(request)
         
-        # Extract token from Authorization header
+        # Extract access token from Authorization header
         authorization = request.headers.get("Authorization")
         if not authorization or not authorization.startswith("Bearer "):
-            raise AuthenticationError("Missing or invalid authorization header")
+            raise AuthenticationError(get_translated_message("missing_authorization_header", language))
         
-        token_string = authorization.split(" ", 1)[1]
+        access_token_string = authorization.split(" ", 1)[1]
         
         # Create access token value object from credentials
         from src.domain.value_objects.jwt_token import AccessToken
         
         access_token = AccessToken.from_encoded(
-            token=token_string,
+            token=access_token_string,
             public_key=settings.JWT_PUBLIC_KEY,
             issuer=settings.JWT_ISSUER,
             audience=settings.JWT_AUDIENCE
         )
         
-        # Delegate logout to domain service
+        # Delegate logout to domain service - it will find and revoke both tokens
         await logout_service.logout_user(
             access_token=access_token,
             user=current_user,

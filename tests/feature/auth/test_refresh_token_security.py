@@ -234,9 +234,30 @@ class TestRefreshTokenSecurityAcceptance:
         }
         
         # Mock token creation methods
-        new_jti = TokenId.generate().value
+        new_jti_obj = TokenId.generate()
+        new_jti = new_jti_obj.value
         mock_token_service.create_access_token.return_value = f"new_access_token_{new_jti}"
         mock_token_service.create_refresh_token.return_value = f"new_refresh_token_{new_jti}"
+        
+        # Mock JWT service within token service (since refresh endpoint calls _jwt_service directly)
+        from src.domain.value_objects.jwt_token import AccessToken, RefreshToken
+        from unittest.mock import MagicMock
+        
+        mock_jwt_service = AsyncMock()
+        
+        # Create proper token objects (not AsyncMock)
+        mock_access_token = MagicMock()
+        mock_access_token.token = f"new_access_token_{new_jti}"
+        mock_access_token.get_token_id.return_value = new_jti_obj
+        
+        mock_refresh_token = MagicMock()
+        mock_refresh_token.token = f"new_refresh_token_{new_jti}"
+        mock_refresh_token.get_token_id.return_value = new_jti_obj
+        
+        # The async methods should return the token objects directly
+        mock_jwt_service.create_access_token.return_value = mock_access_token
+        mock_jwt_service.create_refresh_token.return_value = mock_refresh_token
+        mock_token_service._jwt_service = mock_jwt_service
         
         # Override dependencies
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
@@ -246,14 +267,15 @@ class TestRefreshTokenSecurityAcceptance:
         try:
             client = TestClient(app)
             
-            # Make refresh request
+            # Make refresh request with tokens in headers
             response = client.post(
                 "/api/v1/auth/refresh",
-                json={
-                    "access_token": valid_token_pair["access_token"],
-                    "refresh_token": valid_token_pair["refresh_token"],
-                },
-                headers={"Content-Type": "application/json"}
+                json={},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {valid_token_pair['access_token']}",
+                    "X-Refresh-Token": valid_token_pair["refresh_token"]
+                }
             )
             
             # Verify successful response
@@ -274,9 +296,9 @@ class TestRefreshTokenSecurityAcceptance:
             # Verify token validation was called with both tokens
             mock_token_service.validate_token_pair.assert_called_once()
             
-            # Verify new tokens were created
-            mock_token_service.create_access_token.assert_called_once()
-            mock_token_service.create_refresh_token.assert_called_once()
+            # Verify new tokens were created via JWT service
+            mock_jwt_service.create_access_token.assert_called_once()
+            mock_jwt_service.create_refresh_token.assert_called_once()
             
         finally:
             app.dependency_overrides.clear()
@@ -313,14 +335,15 @@ class TestRefreshTokenSecurityAcceptance:
         try:
             client = TestClient(app)
             
-            # Make refresh request with mismatched tokens
+            # Make refresh request with mismatched tokens in headers
             response = client.post(
                 "/api/v1/auth/refresh",
-                json={
-                    "access_token": mismatched_token_pair["access_token"],
-                    "refresh_token": mismatched_token_pair["refresh_token"],
-                },
-                headers={"Content-Type": "application/json"}
+                json={},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {mismatched_token_pair['access_token']}",
+                    "X-Refresh-Token": mismatched_token_pair["refresh_token"]
+                }
             )
             
             # Verify security violation response
@@ -399,14 +422,15 @@ class TestRefreshTokenSecurityAcceptance:
         try:
             client = TestClient(app)
             
-            # Make refresh request with expired tokens
+            # Make refresh request with expired tokens in headers
             response = client.post(
                 "/api/v1/auth/refresh",
-                json={
-                    "access_token": expired_access_token,
-                    "refresh_token": expired_refresh_token,
-                },
-                headers={"Content-Type": "application/json"}
+                json={},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {expired_access_token}",
+                    "X-Refresh-Token": expired_refresh_token
+                }
             )
             
             # Verify expiration error response
@@ -458,11 +482,12 @@ class TestRefreshTokenSecurityAcceptance:
             for i in range(10):  # Attempt 10 requests rapidly
                 response = client.post(
                     "/api/v1/auth/refresh",
-                    json={
-                        "access_token": valid_token_pair["access_token"],
-                        "refresh_token": valid_token_pair["refresh_token"],
-                    },
-                    headers={"Content-Type": "application/json"}
+                    json={},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {valid_token_pair['access_token']}",
+                        "X-Refresh-Token": valid_token_pair["refresh_token"]
+                    }
                 )
                 responses.append(response)
                 
@@ -526,6 +551,27 @@ class TestRefreshTokenSecurityAcceptance:
         mock_token_service.create_access_token.return_value = "new_access_token"
         mock_token_service.create_refresh_token.return_value = "new_refresh_token"
         
+        # Mock JWT service within token service (since refresh endpoint calls _jwt_service directly)
+        mock_jwt_service = AsyncMock()
+        
+        # Generate proper TokenId for the mock tokens
+        new_jti_obj = TokenId.generate()
+        new_jti = new_jti_obj.value
+        
+        # Create proper token objects (not AsyncMock)
+        mock_access_token = MagicMock()
+        mock_access_token.token = f"new_access_token_{new_jti}"
+        mock_access_token.get_token_id.return_value = new_jti_obj
+        
+        mock_refresh_token = MagicMock()
+        mock_refresh_token.token = f"new_refresh_token_{new_jti}"
+        mock_refresh_token.get_token_id.return_value = new_jti_obj
+        
+        # The async methods should return the token objects directly
+        mock_jwt_service.create_access_token.return_value = mock_access_token
+        mock_jwt_service.create_refresh_token.return_value = mock_refresh_token
+        mock_token_service._jwt_service = mock_jwt_service
+        
         # Override dependencies
         app.dependency_overrides[get_async_db] = lambda: mock_db_session
         app.dependency_overrides[get_redis] = lambda: mock_redis_client
@@ -538,11 +584,12 @@ class TestRefreshTokenSecurityAcceptance:
             def make_refresh_request():
                 return client.post(
                     "/api/v1/auth/refresh",
-                    json={
-                        "access_token": valid_token_pair["access_token"],
-                        "refresh_token": valid_token_pair["refresh_token"],
-                    },
-                    headers={"Content-Type": "application/json"}
+                    json={},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {valid_token_pair['access_token']}",
+                        "X-Refresh-Token": valid_token_pair["refresh_token"]
+                    }
                 )
             
             # Make concurrent requests
@@ -633,11 +680,12 @@ class TestRefreshTokenSecurityAcceptance:
             # Attempt cross-user token attack
             response = client.post(
                 "/api/v1/auth/refresh",
-                json={
-                    "access_token": user_a_access_token,  # User A's token
-                    "refresh_token": user_b_refresh_token,  # User B's token - ATTACK!
-                },
-                headers={"Content-Type": "application/json"}
+                json={},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {user_a_access_token}",  # User A's token
+                    "X-Refresh-Token": user_b_refresh_token  # User B's token - ATTACK!
+                }
             )
             
             # Verify attack is blocked
@@ -669,38 +717,38 @@ class TestRefreshTokenSecurityAcceptance:
             client = TestClient(app)
             
             test_cases = [
-                # Missing access token
+                # Missing Authorization header
                 {
-                    "payload": {"refresh_token": "valid_refresh_token"},
-                    "expected_status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "headers": {"Content-Type": "application/json", "X-Refresh-Token": "valid_refresh_token"},
+                    "expected_status": status.HTTP_401_UNAUTHORIZED,
                 },
-                # Missing refresh token
+                # Missing X-Refresh-Token header
                 {
-                    "payload": {"access_token": "valid_access_token"},
-                    "expected_status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "headers": {"Content-Type": "application/json", "Authorization": "Bearer valid_access_token"},
+                    "expected_status": status.HTTP_401_UNAUTHORIZED,
                 },
-                # Empty payload
+                # Invalid Authorization header format
                 {
-                    "payload": {},
-                    "expected_status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "headers": {"Content-Type": "application/json", "Authorization": "InvalidFormat token", "X-Refresh-Token": "valid_refresh_token"},
+                    "expected_status": status.HTTP_401_UNAUTHORIZED,
                 },
-                # Invalid JSON structure
+                # Empty Authorization header
                 {
-                    "payload": {"invalid": "structure"},
-                    "expected_status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "headers": {"Content-Type": "application/json", "Authorization": "", "X-Refresh-Token": "valid_refresh_token"},
+                    "expected_status": status.HTTP_401_UNAUTHORIZED,
                 },
-                # Null values
+                # Empty X-Refresh-Token header  
                 {
-                    "payload": {"access_token": None, "refresh_token": None},
-                    "expected_status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "headers": {"Content-Type": "application/json", "Authorization": "Bearer valid_access_token", "X-Refresh-Token": ""},
+                    "expected_status": status.HTTP_401_UNAUTHORIZED,
                 },
             ]
             
             for i, test_case in enumerate(test_cases):
                 response = client.post(
                     "/api/v1/auth/refresh",
-                    json=test_case["payload"],
-                    headers={"Content-Type": "application/json"}
+                    json={},
+                    headers=test_case["headers"]
                 )
                 
                 assert response.status_code == test_case["expected_status"], \
@@ -759,11 +807,12 @@ class TestRefreshTokenSecurityAcceptance:
             
             response = client.post(
                 "/api/v1/auth/refresh",
-                json={
-                    "access_token": valid_token_pair["access_token"],
-                    "refresh_token": valid_token_pair["refresh_token"],
-                },
-                headers={"Content-Type": "application/json"}
+                json={},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {valid_token_pair['access_token']}",
+                    "X-Refresh-Token": valid_token_pair["refresh_token"]
+                }
             )
             
             # Verify security headers (if implemented)

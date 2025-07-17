@@ -27,7 +27,7 @@ from src.domain.interfaces import (
     ITokenService,
     IUserLogoutService,
 )
-from src.domain.value_objects.jwt_token import AccessToken, RefreshToken
+from src.domain.value_objects.jwt_token import AccessToken
 from src.common.i18n import get_translated_message
 
 from .base_authentication_service import BaseAuthenticationService, ServiceContext
@@ -90,13 +90,13 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
         user_agent: str = "",
         correlation_id: str = "",
     ) -> None:
-        """Logout user by revoking tokens and terminating session.
+        """Logout user by revoking both access and refresh tokens.
         
         This method implements the core logout business logic following
         Domain-Driven Design principles:
         
         1. **Input Validation**: Uses domain value objects (AccessToken)
-        2. **Business Rules**: Revokes access token to terminate session
+        2. **Business Rules**: Finds associated refresh token and revokes both tokens
         3. **Security Context**: Captures security-relevant information for audit
         4. **Domain Events**: Publishes events for security monitoring and audit trails
         5. **Error Handling**: Provides meaningful error messages in ubiquitous language
@@ -104,10 +104,13 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
         7. **I18N Support**: Uses provided language for all error messages
         
         Logout Flow:
-        1. Calculate session duration for audit purposes
-        2. Revoke access token to terminate session
-        3. Publish domain event for security monitoring
-        4. Log successful logout with security context
+        1. Validate access token ownership belongs to authenticated user
+        2. Find associated refresh token using token family relationship
+        3. Calculate session duration for audit purposes
+        4. Revoke access token to terminate current session
+        5. Revoke refresh token to prevent future token generation
+        6. Publish domain event for security monitoring
+        7. Log successful logout with security context
         
         Args:
             access_token: Access token value object (validated)
@@ -118,10 +121,11 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
             correlation_id: Request correlation ID for tracing and debugging
             
         Raises:
-            AuthenticationError: If token revocation fails
+            AuthenticationError: If token revocation fails or token doesn't belong to user
                                
         Security Considerations:
-        - Token revocation ensures session termination
+        - Both token revocation ensures complete session termination
+        - Token ownership validation prevents cross-user token attacks
         - Comprehensive audit trails via domain events
         - Secure logging with sensitive data masking
         - Fail-secure error handling
@@ -149,12 +153,52 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
                 security_context_captured=True
             )
             
+            # Validate access token ownership belongs to authenticated user
+            await self._validate_access_token_ownership(access_token, user, ctx)
+            
             # Calculate session duration for audit purposes
             session_duration = self._calculate_session_duration(access_token)
             
-            # Revoke access token to terminate session
+            # Revoke both tokens to completely terminate session
             try:
-                await self._token_service.revoke_access_token(str(access_token.get_token_id()))
+                # Get JTI from access token to find and revoke the refresh token
+                access_jti = access_token.get_token_id().value
+                
+                # Extract family_id from access token for enhanced security
+                family_id = access_token.claims.get("family_id")
+                
+                # Revoke access token to terminate current session
+                await self._token_service.revoke_access_token(access_jti)
+                logger.info(
+                    "Access token revoked successfully",
+                    user_id=user.id,
+                    access_token_id=access_token.get_token_id().mask_for_logging(),
+                    family_id=family_id[:8] + "..." if family_id else "none",
+                    correlation_id=ctx.correlation_id
+                )
+                
+                # Find and revoke refresh token using the access token's JTI
+                # The token service will find the associated refresh token
+                await self._token_service.revoke_refresh_token_by_jti(access_jti, ctx.language)
+                logger.info(
+                    "Refresh token revoked successfully",
+                    user_id=user.id,
+                    access_jti=access_jti[:8] + "..." if access_jti else "none",
+                    family_id=family_id[:8] + "..." if family_id else "none",
+                    correlation_id=ctx.correlation_id
+                )
+                
+                # Revoke entire token family for enhanced security
+                # This ensures all tokens in the family are invalidated
+                if family_id:
+                    await self._revoke_token_family(family_id, user, ctx)
+                else:
+                    logger.debug(
+                        "No family_id found in token, skipping family revocation",
+                        user_id=user.id,
+                        correlation_id=ctx.correlation_id
+                    )
+                
             except AuthenticationError:
                 # Re-raise domain-specific errors as-is
                 raise
@@ -181,8 +225,60 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
                 username=user.username,
                 session_duration_seconds=session_duration,
                 correlation_id=ctx.correlation_id,
-                logout_method="user_initiated"
+                logout_method="user_initiated",
+                tokens_revoked=["access_token", "refresh_token"],
+                token_family_revoked=family_id is not None,
+                security_enhancement="token_family_revocation" if family_id else "individual_tokens_only"
             )
+    
+    async def _validate_access_token_ownership(
+        self, 
+        access_token: AccessToken, 
+        user: User, 
+        context: ServiceContext
+    ) -> None:
+        """Validate that the access token belongs to the authenticated user.
+        
+        This security check prevents cross-user token attacks where
+        a user might try to use someone else's access token.
+        
+        Args:
+            access_token: Access token to validate
+            user: Expected user entity
+            context: Service context for logging
+            
+        Raises:
+            AuthenticationError: If token doesn't belong to the user
+        """
+        # Extract user ID from token claims
+        access_user_id = access_token.claims.get("sub")
+        
+        # Convert user ID to string for comparison
+        expected_user_id = str(user.id)
+        
+        # Validate access token ownership
+        if access_user_id != expected_user_id:
+            logger.warning(
+                "Token ownership validation failed for access token",
+                user_id=user.id,
+                access_token_user_id=access_user_id,
+                expected_user_id=expected_user_id,
+                correlation_id=context.correlation_id,
+                security_violation=True
+            )
+            raise AuthenticationError(
+                get_translated_message("token_ownership_mismatch", context.language)
+            )
+        
+        # Extract JTI for logging
+        access_jti = access_token.claims.get("jti")
+        
+        logger.debug(
+            "Access token ownership validation successful",
+            user_id=user.id,
+            jti=access_jti[:8] + "..." if access_jti else "none",
+            correlation_id=context.correlation_id
+        )
     
     def _calculate_session_duration(self, access_token: AccessToken) -> Optional[int]:
         """Calculate session duration from access token for audit purposes.
@@ -253,6 +349,71 @@ class UserLogoutService(IUserLogoutService, BaseAuthenticationService):
         
         await self._publish_domain_event(event, context, logger)
     
+    async def _revoke_token_family(
+        self,
+        family_id: str,
+        user: User,
+        context: ServiceContext
+    ) -> None:
+        """Revoke entire token family for enhanced security.
+        
+        This method implements the token family security pattern where
+        logout revokes all tokens in the family, not just the current ones.
+        This provides enhanced security by ensuring no related tokens
+        can be used after logout.
+        
+        Args:
+            family_id: Token family ID to revoke
+            user: User who owns the token family
+            context: Service context for logging
+        """
+        try:
+            logger.info(
+                "Initiating token family revocation for enhanced security",
+                user_id=user.id,
+                family_id=family_id[:8] + "..." if family_id else "none",
+                correlation_id=context.correlation_id,
+                security_enhancement=True
+            )
+            
+            # Revoke the entire token family through the token service
+            # This is a more secure approach that invalidates all related tokens
+            success = await self._token_service.revoke_token_family(
+                family_id=family_id,
+                reason="User logout - enhanced security",
+                correlation_id=context.correlation_id
+            )
+            
+            if success:
+                logger.info(
+                    "Token family revoked successfully",
+                    user_id=user.id,
+                    family_id=family_id[:8] + "..." if family_id else "none",
+                    correlation_id=context.correlation_id,
+                    security_enhancement=True
+                )
+            else:
+                logger.warning(
+                    "Token family not found or already revoked",
+                    user_id=user.id,
+                    family_id=family_id[:8] + "..." if family_id else "none",
+                    correlation_id=context.correlation_id
+                )
+                
+        except Exception as e:
+            # Log error but don't fail the logout process
+            # Individual token revocation should still work
+            logger.error(
+                "Token family revocation failed, continuing with individual token revocation",
+                user_id=user.id,
+                family_id=family_id[:8] + "..." if family_id else "none",
+                error_type=type(e).__name__,
+                error_message=str(e),
+                correlation_id=context.correlation_id,
+                security_impact="reduced"
+            )
+            # Don't raise exception - individual token revocation should still work
+
     async def _validate_operation_prerequisites(self, context: ServiceContext) -> None:
         """Validate operation prerequisites for user logout.
         

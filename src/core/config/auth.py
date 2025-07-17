@@ -35,7 +35,7 @@ class AuthSettings(BaseSettings):
     JWT_PUBLIC_KEY: str = ""
     JWT_ISSUER: str = "https://api.example.com"
     JWT_AUDIENCE: str = "cedrina:api:v1"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 7
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Email confirmation feature flag

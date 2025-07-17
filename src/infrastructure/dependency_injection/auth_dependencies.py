@@ -208,13 +208,28 @@ def get_token_service() -> ITokenService:
         - Sub-millisecond performance for high-throughput applications
         - Encrypted token data for enhanced security
         - Session isolation for parallel tasks
+        - Proper token revocation in database and cache
     """
     from src.infrastructure.database.session_factory import AsyncSessionFactoryImpl
+    from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
+    from src.infrastructure.repositories.token_family_repository import TokenFamilyRepository
+    from src.infrastructure.services.event_publisher import InMemoryEventPublisher
     
-    # Create domain token service with a new session factory instance
-    # to avoid sharing session factory across different event loops
+    # Create shared dependencies
+    session_factory = AsyncSessionFactoryImpl()
+    token_family_repository = TokenFamilyRepository(session_factory)
+    event_publisher = InMemoryEventPublisher()
+    
+    # Create session service for proper token revocation
+    # Note: We'll create a placeholder session service - actual sessions will be created per operation
+    session_service = None  # Will be created per operation in _revoke_token_in_database
+    
+    # Create domain token service with full dependency injection
     return DomainTokenService(
-        session_factory=AsyncSessionFactoryImpl()
+        session_factory=session_factory,
+        token_family_repository=token_family_repository,
+        event_publisher=event_publisher,
+        session_service=session_service  # Pass None, method will create as needed
     )
 
 

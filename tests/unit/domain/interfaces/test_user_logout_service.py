@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock
 from src.domain.entities.user import User
 from src.domain.interfaces.authentication.user_logout import IUserLogoutService
 from src.domain.value_objects.jwt_token import AccessToken
-from src.domain.value_objects.security_context import SecurityContext
 from tests.factories.user import create_fake_user
 
 
@@ -55,11 +54,12 @@ class TestUserLogoutServiceInterface:
         assert 'self' in params
         assert 'access_token' in params
         assert 'user' in params
-        assert 'security_context' in params
         assert 'language' in params
+        assert 'client_ip' in params
+        assert 'user_agent' in params
+        assert 'correlation_id' in params
         assert sig.parameters['access_token'].annotation == AccessToken
         assert sig.parameters['user'].annotation == User
-        assert sig.parameters['security_context'].annotation == SecurityContext
         assert sig.parameters['language'].annotation == str
         assert sig.return_annotation is None
 
@@ -85,19 +85,19 @@ class TestUserLogoutServiceInterface:
         """Test that interface uses domain value objects for type safety."""
         import inspect
         
-        # Should use AccessToken and SecurityContext value objects
+        # Should use AccessToken value object
         sig = inspect.signature(IUserLogoutService.logout_user)
         assert sig.parameters['access_token'].annotation == AccessToken
-        assert sig.parameters['security_context'].annotation == SecurityContext
 
     def test_interface_includes_security_considerations(self):
         """Test that interface includes security considerations."""
-        # Logout interface should include security context
+        # Logout interface should include security parameters for logging
         import inspect
         
         sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'security_context' in sig.parameters
-        assert sig.parameters['security_context'].annotation == SecurityContext
+        assert 'client_ip' in sig.parameters
+        assert 'user_agent' in sig.parameters
+        assert 'correlation_id' in sig.parameters
 
     def test_interface_includes_i18n_support(self):
         """Test that interface includes internationalization support."""
@@ -127,7 +127,7 @@ class TestUserLogoutServiceInterface:
         assert "logs" in doc
         assert "user" in doc
         assert "access_token" in doc
-        assert "security_context" in doc
+        assert "client_ip" in doc
         assert "language" in doc
         assert "raises" in doc
 
@@ -157,14 +157,21 @@ class TestUserLogoutServiceInterface:
         assert "tokenrevocationerror" in doc
         assert "validationerror" in doc
 
-    def test_interface_security_context_validation(self):
-        """Test that interface properly validates security context."""
+    def test_interface_security_parameter_validation(self):
+        """Test that interface properly validates security parameters."""
         import inspect
         
         sig = inspect.signature(IUserLogoutService.logout_user)
-        security_param = sig.parameters['security_context']
-        assert security_param.annotation == SecurityContext
-        assert security_param.default is inspect._empty  # Required parameter
+        
+        # Check security-related parameters exist and have proper defaults
+        client_ip_param = sig.parameters['client_ip']
+        assert client_ip_param.default is None  # Optional parameter
+        
+        user_agent_param = sig.parameters['user_agent']
+        assert user_agent_param.default is None  # Optional parameter
+        
+        correlation_id_param = sig.parameters['correlation_id']
+        assert correlation_id_param.default is None  # Optional parameter
 
     def test_interface_value_object_validation(self):
         """Test that interface uses value objects for input validation."""
@@ -180,16 +187,19 @@ class TestUserLogoutServiceInterface:
         assert user_param.annotation == User
 
     def test_interface_audit_trail_support(self):
-        """Test that interface supports audit trails through security context."""
+        """Test that interface supports audit trails through security parameters."""
         import inspect
         
         sig = inspect.signature(IUserLogoutService.logout_user)
-        security_param = sig.parameters['security_context']
-        assert security_param.annotation == SecurityContext
         
-        # Security context should include audit trail information
+        # Check audit trail support through security parameters
+        assert 'client_ip' in sig.parameters
+        assert 'user_agent' in sig.parameters
+        assert 'correlation_id' in sig.parameters
+        
+        # Documentation should mention audit trail information
         doc = IUserLogoutService.logout_user.__doc__.lower()
-        assert "audit" in doc or "security_context" in doc
+        assert "audit" in doc or "security" in doc
 
     def test_interface_concurrent_access_support(self):
         """Test that interface supports concurrent access scenarios."""
@@ -237,9 +247,10 @@ class TestUserLogoutServiceInterface:
         user_param = sig.parameters['user']
         assert user_param.annotation == User
         
-        # Security context should handle edge cases through value object validation
-        security_param = sig.parameters['security_context']
-        assert security_param.annotation == SecurityContext
+        # Security parameters should handle edge cases through optional parameters
+        assert 'client_ip' in sig.parameters
+        assert 'user_agent' in sig.parameters
+        assert 'correlation_id' in sig.parameters
 
     def test_interface_production_scenario_support(self):
         """Test that interface supports real-world production scenarios."""
@@ -256,7 +267,9 @@ class TestUserLogoutServiceInterface:
         # Use iscoroutinefunction to check for async
         assert inspect.iscoroutinefunction(IUserLogoutService.logout_user)
         sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'security_context' in sig.parameters  # Audit trails
+        assert 'client_ip' in sig.parameters  # Audit trails
+        assert 'user_agent' in sig.parameters  # Audit trails  
+        assert 'correlation_id' in sig.parameters  # Audit trails
         assert sig.parameters['access_token'].annotation == AccessToken  # Validation
         assert sig.parameters['user'].annotation == User  # Validation
         assert 'language' in sig.parameters  # Internationalization
@@ -264,7 +277,7 @@ class TestUserLogoutServiceInterface:
         # Should document production considerations
         doc = IUserLogoutService.logout_user.__doc__.lower()
         assert "security" in doc
-        assert "audit" in doc or "security_context" in doc
+        assert "audit" in doc
 
     def test_interface_token_revocation_support(self):
         """Test that interface supports token revocation."""
@@ -294,12 +307,13 @@ class TestUserLogoutServiceInterface:
 
     def test_interface_secure_logout_support(self):
         """Test that interface supports secure logout."""
-        # Interface should support secure logout through security context
+        # Interface should support secure logout through security parameters
         import inspect
         
         sig = inspect.signature(IUserLogoutService.logout_user)
-        security_param = sig.parameters['security_context']
-        assert security_param.annotation == SecurityContext
+        assert 'client_ip' in sig.parameters
+        assert 'user_agent' in sig.parameters
+        assert 'correlation_id' in sig.parameters
         
         # Should ensure secure logout
         doc = IUserLogoutService.logout_user.__doc__.lower()
@@ -337,10 +351,11 @@ class TestUserLogoutServiceInterface:
         
         import inspect
         
-        # Security context support
+        # Security parameters support
         sig = inspect.signature(IUserLogoutService.logout_user)
-        assert 'security_context' in sig.parameters
-        assert sig.parameters['security_context'].annotation == SecurityContext
+        assert 'client_ip' in sig.parameters
+        assert 'user_agent' in sig.parameters
+        assert 'correlation_id' in sig.parameters
         
         # Token revocation
         token_param = sig.parameters['access_token']

@@ -18,8 +18,8 @@ def test_database_settings(monkeypatch):
     # We need to reload the settings, but for this simple case, we can just patch it
     monkeypatch.setattr(settings, "POSTGRES_DB", "cedrina_test")
 
-    assert settings.POSTGRES_POOL_SIZE == 5
-    assert settings.POSTGRES_MAX_OVERFLOW == 10
+    assert settings.POSTGRES_POOL_SIZE == 20
+    assert settings.POSTGRES_MAX_OVERFLOW == 30
     assert settings.POSTGRES_POOL_TIMEOUT == 30.0
     assert settings.POSTGRES_SSL_MODE == "disable"
     assert settings.POSTGRES_DB == "cedrina_test"

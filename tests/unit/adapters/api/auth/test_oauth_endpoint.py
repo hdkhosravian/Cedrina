@@ -72,19 +72,20 @@ async def test_oauth_token_refresh_invalid_token(async_client: httpx.AsyncClient
 
 @pytest.mark.asyncio
 async def test_oauth_token_refresh_malformed_request(async_client: httpx.AsyncClient, db_session):
-    """Test token refresh with malformed request (missing access token) returns 422."""
+    """Test token refresh with malformed request (missing headers) returns 401."""
+    # Test with empty request body and missing headers (new header-based approach)
     response = await async_client.post(
         "/api/v1/auth/refresh", 
-        json={"refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ.signature"}
+        json={}
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "detail" in response.json()
     
-    # Check that the error mentions missing access_token
-    errors = response.json()["detail"]
-    field_errors = [error for error in errors if "access_token" in str(error)]
-    assert len(field_errors) > 0
+    # Check that the error mentions missing authorization header
+    response_data = response.json()
+    error_detail = response_data["detail"].lower()
+    assert "authorization" in error_detail or "header" in error_detail
 
 
 # Temporarily comment out the test causing attribute error

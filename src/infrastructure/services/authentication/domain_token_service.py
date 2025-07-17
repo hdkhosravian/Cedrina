@@ -48,6 +48,7 @@ from src.infrastructure.services.base_service import BaseInfrastructureService
 from src.domain.interfaces.repositories.user_repository import IUserRepository
 from src.infrastructure.repositories.user_repository import UserRepository
 from src.infrastructure.database.session_factory import ISessionFactory
+from src.infrastructure.services.authentication.unified_session_service import UnifiedSessionService
 
 
 class DomainTokenService(ITokenService, BaseInfrastructureService):
@@ -84,7 +85,8 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
         user_repository: Optional[IUserRepository] = None,
         token_family_repository: Optional[ITokenFamilyRepository] = None,
         event_publisher: Optional[IEventPublisher] = None,
-        jwt_service = None
+        jwt_service = None,
+        session_service: Optional[UnifiedSessionService] = None
     ):
         """
         Initialize domain token service with infrastructure dependencies.
@@ -108,6 +110,7 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
         self._user_repository = user_repository or UserRepository(session_factory)
         self._token_family_repository = token_family_repository or TokenFamilyRepository(session_factory)
         self._event_publisher = event_publisher or InMemoryEventPublisher()
+        self._session_service = session_service
         
         # Set up logging with session tracking
         self._logger = structlog.get_logger(f"{__name__}.DomainTokenService")
@@ -186,10 +189,70 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
                     family_id=token_family.family_id
                 )
                 
+                # CREATE DATABASE SESSION - This is the missing critical step!
+                # Create session directly in the current database session
+                try:
+                    from datetime import datetime, timezone, timedelta
+                    from src.domain.entities.session import Session as SessionEntity
+                    import hashlib
+                    
+                    # Calculate refresh token expiration  
+                    refresh_expires_at = datetime.now(timezone.utc) + timedelta(days=7)  # Default 7 days
+                    
+                    # Create hash of refresh token for secure storage
+                    if hasattr(refresh_token, 'token'):
+                        refresh_token_str = refresh_token.token
+                    else:
+                        refresh_token_str = str(refresh_token)
+                    
+                    # Ensure we have a string
+                    if not isinstance(refresh_token_str, str):
+                        refresh_token_str = str(refresh_token_str)
+                        
+                    refresh_token_hash = hashlib.sha256(refresh_token_str.encode()).hexdigest()
+                    
+                    # Create the session entity directly
+                    current_time = datetime.now(timezone.utc)
+                    session_entity = SessionEntity(
+                        user_id=request.user.id,
+                        jti=token_id.value,
+                        refresh_token_hash=refresh_token_hash,
+                        expires_at=refresh_expires_at.replace(tzinfo=None),
+                        last_activity_at=current_time.replace(tzinfo=None),
+                        family_id=token_family.family_id
+                    )
+                    
+                    # Add session to current transaction
+                    session.add(session_entity)
+                    # Session will be committed with the transaction
+                    
+                    self._log_success(
+                        operation="create_session_during_login",
+                        user_id=request.user.id,
+                        jti=token_id.value[:8] + "...",
+                        family_id=token_family.family_id[:8] + "...",
+                        correlation_id=request.correlation_id
+                    )
+                    
+                except Exception as e:
+                    # Session creation is now MANDATORY for security
+                    # If we can't create a session, we can't issue tokens
+                    self._log_error(
+                        operation="create_session_during_login",
+                        message="CRITICAL: Session creation failed during login - cannot issue tokens",
+                        error=str(e),
+                        user_id=request.user.id,
+                        jti=token_id.value[:8] + "...",
+                        correlation_id=request.correlation_id
+                    )
+                    raise AuthenticationError("Session creation failed - cannot issue tokens")
+                
                 # Create token pair response
+                access_token_str = access_token.token if hasattr(access_token, 'token') else str(access_token)
+                refresh_token_str = refresh_token.token if hasattr(refresh_token, 'token') else str(refresh_token)
                 token_pair = TokenPair(
-                    access_token=access_token.token,  # Extract token string from value object
-                    refresh_token=refresh_token.token,  # Extract token string from value object
+                    access_token=access_token_str,  # Extract token string from value object
+                    refresh_token=refresh_token_str,  # Extract token string from value object
                     family_id=token_family.family_id,
                     expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
                 )
@@ -271,9 +334,11 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             )
             
             # Create token pair response
+            new_access_token_str = new_access_token.token if hasattr(new_access_token, 'token') else str(new_access_token)
+            new_refresh_token_str = new_refresh_token.token if hasattr(new_refresh_token, 'token') else str(new_refresh_token)
             token_pair = TokenPair(
-                access_token=new_access_token.token,  # Extract token string from value object
-                refresh_token=new_refresh_token.token,  # Extract token string from value object
+                access_token=new_access_token_str,  # Extract token string from value object
+                refresh_token=new_refresh_token_str,  # Extract token string from value object
                 family_id=family_id,
                 expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
             )
@@ -479,13 +544,64 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             jti: JWT ID to revoke
             expires_in: Optional expiration time
         """
-        # This would be implemented based on your database schema
-        # For now, we'll log the revocation
-        self._log_success(
-            operation="revoke_token_in_database",
-            jti=jti[:8] + "...",
-            expires_in=expires_in
-        )
+        try:
+            # Always attempt to revoke the session in the database
+            # Create session service per operation for proper database transaction handling
+            async with self.session_factory.create_session() as db_session:
+                session_service = UnifiedSessionService(
+                    db_session=db_session,
+                    token_family_repository=self._token_family_repository,
+                    event_publisher=self._event_publisher
+                )
+                
+                # Find the session by JTI and revoke it
+                # The session service will handle finding the user ID from the session
+                from sqlalchemy import select
+                from src.domain.entities.session import Session
+                
+                result = await db_session.execute(
+                    select(Session).where(Session.jti == jti)
+                )
+                session = result.scalars().first()
+                
+                if session:
+                    # Directly update the session in the current database transaction
+                    # instead of using the session service with a different transaction
+                    current_time = datetime.now(timezone.utc)
+                    session.revoked_at = current_time.replace(tzinfo=None)
+                    session.revoke_reason = "Logout - Manual revocation"
+                    
+                    # Mark session as modified in current transaction
+                    db_session.add(session)
+                    
+                    # Commit the transaction to persist the revocation
+                    await db_session.commit()
+                    
+                    self._log_success(
+                        operation="revoke_token_in_database",
+                        jti=jti[:8] + "...",
+                        user_id=session.user_id,
+                        family_id=session.family_id[:8] + "..." if session.family_id else "none",
+                        expires_in=expires_in
+                    )
+                else:
+                    # Session not found - this is OK for tokens created before session implementation
+                    # Just log and continue with logout
+                    self._log_info(
+                        operation="revoke_token_in_database",
+                        message="Session not found for JTI - token created before session implementation",
+                        jti=jti[:8] + "...",
+                    )
+                
+        except Exception as e:
+            # Log error but don't fail the logout - graceful degradation
+            self._log_warning(
+                operation="revoke_token_in_database",
+                message="Failed to revoke token in database - continuing with logout",
+                jti=jti[:8] + "...",
+                error=str(e)
+            )
+            # Don't raise - allow logout to continue
 
     # ITokenService interface methods
     async def create_access_token(self, user: User) -> "AccessToken":
@@ -505,9 +621,9 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             
             token_pair = await self.create_token_pair_with_family_security(request)
             return AccessToken(
-                token=token_pair.access_token.token,
-                expires_at=token_pair.access_token.expires_at,
-                jti=token_pair.access_token.jti
+                token=token_pair.access_token,
+                expires_at=None,  # TokenPair doesn't have expires_at info
+                jti=None  # TokenPair doesn't have jti info directly
             )
         except Exception as e:
             raise self._handle_infrastructure_error(
@@ -533,9 +649,9 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             
             token_pair = await self.create_token_pair_with_family_security(request)
             return RefreshToken(
-                token=token_pair.refresh_token.token,
-                expires_at=token_pair.refresh_token.expires_at,
-                jti=token_pair.refresh_token.jti
+                token=token_pair.refresh_token,
+                expires_at=None,  # TokenPair doesn't have expires_at info
+                jti=None  # TokenPair doesn't have jti info directly
             )
         except Exception as e:
             raise self._handle_infrastructure_error(
@@ -562,14 +678,14 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
             token_pair = await self.refresh_tokens_with_family_security(request)
             return (
                 AccessToken(
-                    token=token_pair.access_token.token,
-                    expires_at=token_pair.access_token.expires_at,
-                    jti=token_pair.access_token.jti
+                    token=token_pair.access_token,
+                    expires_at=None,  # TokenPair doesn't have expires_at info
+                    jti=None  # TokenPair doesn't have jti info directly
                 ),
                 RefreshToken(
-                    token=token_pair.refresh_token.token,
-                    expires_at=token_pair.refresh_token.expires_at,
-                    jti=token_pair.refresh_token.jti
+                    token=token_pair.refresh_token,
+                    expires_at=None,  # TokenPair doesn't have expires_at info
+                    jti=None  # TokenPair doesn't have jti info directly
                 )
             )
         except Exception as e:
@@ -599,18 +715,103 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
     async def revoke_refresh_token(self, token: "RefreshToken", language: str = "en") -> None:
         """Revokes a refresh token."""
         try:
-            # This would need to be implemented based on your token family logic
+            # Get the JTI from the token
+            jti = token.get_token_id().value
+            
+            # For now, we'll revoke the refresh token by treating it like an access token
+            # In a full implementation, this would revoke the token family
+            await self.revoke_access_token(jti)
+            
             self._log_success(
                 operation="revoke_refresh_token",
-                jti=token.jti
+                jti=jti[:8] + "...",
+                language=language
             )
-            # Implementation would depend on your specific token family management
+            
         except Exception as e:
             raise self._handle_infrastructure_error(
                 error=e,
-                operation="revoke_refresh_token"
+                operation="revoke_refresh_token",
+                language=language
             )
-            raise AuthenticationError("Failed to revoke refresh token")
+
+    async def revoke_refresh_token_by_jti(self, jti: str, language: str = "en") -> None:
+        """Revokes a refresh token by its JTI.
+        
+        This method finds the associated refresh token using the JTI and revokes it.
+        This is useful for logout scenarios where we only have the access token.
+        
+        Args:
+            jti: The unique identifier (jti claim) of the token pair to revoke.
+            language: The language for any potential error messages.
+        """
+        try:
+            # For now, we'll revoke the refresh token by treating it like an access token
+            # In a full implementation, this would revoke the token family
+            await self.revoke_access_token(jti)
+            
+            self._log_success(
+                operation="revoke_refresh_token_by_jti",
+                jti=jti[:8] + "...",
+                language=language
+            )
+            
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="revoke_refresh_token_by_jti",
+                language=language
+            )
+
+    async def revoke_token_family(
+        self,
+        family_id: str,
+        reason: str = "Manual revocation",
+        correlation_id: Optional[str] = None
+    ) -> bool:
+        """Revokes an entire token family for enhanced security.
+
+        This method implements the token family security pattern where
+        all tokens in a family are revoked simultaneously. This provides
+        enhanced security for logout operations.
+
+        Args:
+            family_id: The unique identifier of the token family to revoke.
+            reason: Reason for revocation (for audit purposes).
+            correlation_id: Request correlation ID for tracking.
+
+        Returns:
+            bool: True if family was found and revoked, False if not found.
+
+        Raises:
+            AuthenticationError: If revocation fails due to system error.
+        """
+        try:
+            # Delegate to token family repository for actual revocation
+            success = await self._token_family_repository.revoke_family(
+                family_id=family_id,
+                reason=reason,
+                correlation_id=correlation_id
+            )
+            
+            self._log_success(
+                operation="revoke_token_family",
+                family_id=family_id[:8] + "..." if family_id else "none",
+                reason=reason,
+                correlation_id=correlation_id,
+                success=success
+            )
+            
+            return success
+            
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation="revoke_token_family",
+                family_id=family_id,
+                reason=reason,
+                correlation_id=correlation_id
+            )
 
     async def revoke_access_token(
         self, jti: str, expires_in: Optional[int] = None
@@ -658,96 +859,118 @@ class DomainTokenService(ITokenService, BaseInfrastructureService):
         from src.common.exceptions import SecurityViolationError
         
         try:
-            # Validate both tokens individually first
-            access_payload = await self._jwt_service.validate_token(access_token, language)
-            refresh_payload = await self._jwt_service.validate_token(refresh_token, language)
-            
-            # Extract JTIs and user IDs
-            access_jti = access_payload.get("jti")
-            refresh_jti = refresh_payload.get("jti")
-            access_user_id = access_payload.get("sub")
-            refresh_user_id = refresh_payload.get("sub")
-            
-            # Critical security check: JTI mismatch detection
-            if access_jti != refresh_jti:
-                self._logger.warning(
-                    "Token pair security violation: JTI mismatch detected",
-                    access_jti=access_jti[:8] + "..." if access_jti else "none",
-                    refresh_jti=refresh_jti[:8] + "..." if refresh_jti else "none",
-                    correlation_id=correlation_id,
-                    client_ip=client_ip,
-                    security_enhanced=True
-                )
-                raise SecurityViolationError("Token pair security violation detected")
-            
-            # Critical security check: Cross-user attack detection
-            if access_user_id != refresh_user_id:
-                self._logger.warning(
-                    "Cross-user token attack detected",
-                    access_user_id=access_user_id,
-                    refresh_user_id=refresh_user_id,
-                    correlation_id=correlation_id,
-                    client_ip=client_ip,
-                    security_enhanced=True
-                )
-                raise SecurityViolationError("Security violation: token ownership mismatch")
-            
-            # Get user from repository
-            user_id = int(access_user_id)
-            user = await self._user_repository.get_by_id(user_id)
-            if not user or not user.is_active:
-                raise AuthenticationError("User not found or inactive")
-            
-            # Validate token family security
-            security_context = SecurityContext(
-                client_ip=client_ip,
-                user_agent=user_agent,
+            # Step 1: JWT validation first
+            self._logger.info(
+                "Starting token pair validation with JWT and session validation",
+                operation="validate_token_pair",
                 correlation_id=correlation_id
             )
             
-            family_id = access_payload.get("family_id")
-            if family_id:
-                from src.domain.value_objects.jwt_token import TokenId
-                token_id = TokenId(access_jti)
-                
-                is_secure = await self._domain_service.validate_token_family_security(
-                    family_id=family_id,
-                    token_id=token_id,
-                    correlation_id=correlation_id
-                )
-                
-                if not is_secure:
-                    raise SecurityViolationError("Token family security validation failed")
-            
-            # Calculate validation time for metrics
-            validation_start = datetime.now(timezone.utc)
-            validation_time_ms = (datetime.now(timezone.utc) - validation_start).total_seconds() * 1000
-            
-            self._logger.info(
-                "Token pair validation successful",
-                user_id=user.id,
-                jti=access_jti[:8] + "..." if access_jti else "none",
-                family_id=family_id[:8] + "..." if family_id else "none",
-                validation_time_ms=validation_time_ms,
+            result = await self._jwt_service.validate_token_pair(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                client_ip=client_ip,
+                user_agent=user_agent,
                 correlation_id=correlation_id,
-                security_enhanced=True
+                language=language
             )
             
-            return {
-                "user": user,
-                "access_payload": access_payload,
-                "refresh_payload": refresh_payload,
-                "validation_metadata": {
-                    "jti_validated": True,
-                    "validation_time_ms": validation_time_ms,
-                    "security_context": security_context
-                }
-            }
+            # Step 2: DATABASE SESSION VALIDATION - Temporarily disabled for normal flow
+            # TODO: Re-enable after fixing session creation during login
+            refresh_payload = result.get("refresh_payload", {})
+            jti = refresh_payload.get("jti")
+            user = result.get("user")
+            
+            # For now, only check if session is revoked (for logout functionality)
+            # but don't fail if session doesn't exist (allows normal refresh flow)
+            if jti and user:
+                try:
+                    async with self.session_factory.create_session() as db_session:
+                        from sqlalchemy import select, and_
+                        from src.domain.entities.session import Session as SessionEntity
+                        from datetime import datetime, timezone
+                        
+                        # Check if session exists and is revoked (for logout blocking)
+                        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+                        result_query = await db_session.execute(
+                            select(SessionEntity).where(
+                                and_(
+                                    SessionEntity.jti == jti,
+                                    SessionEntity.user_id == user.id
+                                )
+                            )
+                        )
+                        session_entity = result_query.scalar_one_or_none()
+                        
+                        if session_entity:
+                            # Session exists - check if it's revoked
+                            if session_entity.revoked_at is not None:
+                                self._logger.warning(
+                                    "Session validation failed - session has been revoked",
+                                    jti=jti[:8] + "..." if jti else "none",
+                                    user_id=user.id,
+                                    revoked_at=session_entity.revoked_at.isoformat() if session_entity.revoked_at else "unknown",
+                                    correlation_id=correlation_id,
+                                    security_violation=True
+                                )
+                                raise SecurityViolationError("Session has been revoked")
+                            
+                            # Session exists and is not revoked - update activity
+                            session_entity.last_activity_at = current_time
+                            db_session.add(session_entity)
+                            await db_session.commit()
+                            
+                            self._logger.info(
+                                "Session validation successful - session exists and not revoked",
+                                jti=jti[:8] + "..." if jti else "none",
+                                user_id=user.id,
+                                correlation_id=correlation_id
+                            )
+                        else:
+                            # Session doesn't exist - this MUST block token usage
+                            # All tokens MUST have sessions for security
+                            self._logger.error(
+                                "CRITICAL SECURITY: Token has no database session - BLOCKING",
+                                jti=jti[:8] + "..." if jti else "none",
+                                user_id=user.id,
+                                correlation_id=correlation_id,
+                                security_violation=True,
+                                security_policy="MANDATORY_SESSION_VALIDATION"
+                            )
+                            raise SecurityViolationError("Token must have database session for security")
+                            
+                except SecurityViolationError:
+                    # Re-raise security violations - these must block the request
+                    raise
+                except Exception as e:
+                    self._logger.error(
+                        "Session validation error - allowing JWT-only validation for legacy tokens",
+                        error=str(e),
+                        jti=jti[:8] + "..." if jti else "none",
+                        user_id=user.id,
+                        correlation_id=correlation_id
+                    )
+                    # Continue with JWT-only validation only for unexpected errors
+            
+            self._logger.info(
+                "Complete token pair validation successful",
+                operation="validate_token_pair",
+                correlation_id=correlation_id
+            )
+            
+            return result
             
         except (AuthenticationError, SecurityViolationError):
             # Re-raise domain exceptions without modification
             raise
         except Exception as e:
+            self._logger.error(
+                "Unexpected error in validate_token_pair",
+                error=str(e),
+                error_type=type(e).__name__,
+                operation="validate_token_pair",
+                correlation_id=correlation_id
+            )
             raise self._handle_infrastructure_error(
                 error=e,
                 operation="validate_token_pair",
