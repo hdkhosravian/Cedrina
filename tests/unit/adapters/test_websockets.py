@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from adapters.websockets import websocket_health
 from src.core.config.settings import settings
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 @pytest.mark.asyncio

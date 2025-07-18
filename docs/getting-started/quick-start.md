@@ -1,186 +1,524 @@
 # Quick Start Guide
 
-Get Cedrina up and running in minutes with this quick start guide.
+This guide will help you get Cedrina up and running quickly for development and testing purposes.
 
 ## Prerequisites
 
-- **Python 3.12+**: `python --version`
-- **Poetry**: `poetry --version`
-- **Docker**: `docker --version`
-- **Git**: `git --version`
+Before you begin, ensure you have the following installed:
 
-## 1. Clone and Setup
+- **Python 3.12+** - [Download Python](https://www.python.org/downloads/)
+- **PostgreSQL 16+** - [Download PostgreSQL](https://www.postgresql.org/download/)
+- **Redis 7.2+** (optional, for rate limiting) - [Download Redis](https://redis.io/download)
+- **Docker & Docker Compose** (optional) - [Download Docker](https://www.docker.com/products/docker-desktop/)
+- **Poetry** (recommended) - [Install Poetry](https://python-poetry.org/docs/#installation)
+
+## Installation Options
+
+### Option 1: Docker (Recommended for Quick Start)
+
+The fastest way to get started is using Docker Compose:
 
 ```bash
 # Clone the repository
 git clone https://github.com/hdkhosravian/cedrina.git
 cd cedrina
 
-# Install dependencies
-poetry install
+# Start all services with Docker Compose
+docker-compose up -d
 
-# Copy environment file
-cp .env.development .env
+# Run database migrations
+docker-compose exec app alembic upgrade head
+
+# Create an admin user (if script exists)
+docker-compose exec app python -m src.scripts.create_admin
 ```
 
-## 2. Configure Environment
-
-Edit `.env` with your settings:
-
+**Alternative using Makefile:**
 ```bash
-# Generate a secure secret key
-SECRET_KEY=$(openssl rand -base64 32)
-
-# Update .env with your values
-SECRET_KEY=your_generated_secret_key
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=cedrina_dev
-```
-
-## 3. Start Services
-
-### Option A: Docker (Recommended)
-
-```bash
-# Start all services (app, PostgreSQL, Redis)
+# Build and start development environment
+make build
 make run-dev
 
-# Or using docker-compose directly
-docker-compose up -d
+# Run tests
+make test
+
+# Check health
+make check-health
 ```
 
-### Option B: Local Services
+### Option 2: Local Development Setup
+
+For development work, you may prefer a local setup:
 
 ```bash
-# Start PostgreSQL and Redis locally
-# Then run the application
+# Clone the repository
+git clone https://github.com/hdkhosravian/cedrina.git
+cd cedrina
+
+# Install dependencies using Poetry (recommended)
+poetry install
+
+# Or using pip (if requirements.txt exists)
+pip install -r requirements.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Initialize database
+make db-init
+
+# Run database migrations
+make db-migrate
+
+# Start the application
 make run-dev-local
 ```
 
-## 4. Verify Installation
+## Environment Configuration
+
+Create a `.env` file with the following configuration:
 
 ```bash
-# Check health endpoint
-curl http://localhost:8000/api/v1/health
+# Application Configuration
+APP_ENV=development
+DEBUG=true
+LOG_LEVEL=INFO
 
-# Expected response:
+# Database Configuration
+DATABASE_URL=postgresql://cedrina:password@localhost:5432/cedrina
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=cedrina
+POSTGRES_DB_TEST=cedrina_test
+POSTGRES_USER=cedrina
+POSTGRES_PASSWORD=your_secure_password
+POSTGRES_SSL_MODE=prefer
+
+# Redis Configuration (optional, for rate limiting)
+REDIS_URL=redis://localhost:6379/0
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# JWT Configuration
+JWT_PRIVATE_KEY_PATH=./keys/private.pem
+JWT_PUBLIC_KEY_PATH=./keys/public.pem
+JWT_ISSUER=https://api.example.com
+JWT_AUDIENCE=cedrina:api:v1
+JWT_ALGORITHM=RS256
+
+# OAuth Configuration (optional)
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+MICROSOFT_CLIENT_ID=your_microsoft_client_id
+MICROSOFT_CLIENT_SECRET=your_microsoft_client_secret
+FACEBOOK_CLIENT_ID=your_facebook_client_id
+FACEBOOK_CLIENT_SECRET=your_facebook_client_secret
+
+# Security Configuration
+SESSION_INACTIVITY_TIMEOUT_MINUTES=30
+MAX_CONCURRENT_SESSIONS_PER_USER=5
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+SECRET_KEY=your_secret_key_here
+
+# Rate Limiting Configuration
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_DEFAULT_LIMIT=100
+RATE_LIMIT_DEFAULT_WINDOW=60
+
+# Email Configuration (optional)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+SMTP_TLS=true
+SMTP_SSL=false
+
+# Internationalization
+DEFAULT_LOCALE=en
+SUPPORTED_LOCALES=en,ar,es,fa
+```
+
+## API Usage Examples
+
+### 1. User Registration
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "john_doe",
+    "email": "john@example.com",
+    "password": "SecurePassword123!"
+  }'
+```
+
+**Expected Response:**
+```json
 {
-  "status": "ok",
-  "env": "development",
-  "message": "System is operational"
+  "message": "User registered successfully. Please check your email for confirmation.",
+  "user_id": "uuid-here",
+  "status": "pending_confirmation"
 }
 ```
 
-## 5. Access the Application
+### 2. User Login
 
-- **API**: http://localhost:8000/api/v1/
-- **Health Check**: http://localhost:8000/api/v1/health
-- **WebSocket**: ws://localhost:8000/ws/health
-- **Documentation**: http://localhost:8000/docs (if DEBUG=true)
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "john_doe",
+    "password": "SecurePassword123!"
+  }'
+```
 
-## 6. Run Tests
+**Expected Response:**
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
+  "token_type": "bearer",
+  "expires_in": 900
+}
+```
+
+### 3. Refresh Token
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "your_refresh_token_here"
+  }'
+```
+
+### 4. Access Protected Endpoints
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/auth/me" \
+  -H "Authorization: Bearer your_access_token_here"
+```
+
+### 5. OAuth Login (Google)
+
+```bash
+# Redirect users to this URL for Google OAuth
+GET "http://localhost:8000/api/v1/auth/oauth/google"
+```
+
+### 6. Email Confirmation
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/confirm-email" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "your_confirmation_token_here"
+  }'
+```
+
+### 7. Password Reset
+
+```bash
+# Request password reset
+curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com"
+  }'
+
+# Reset password with token
+curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "your_reset_token_here",
+    "new_password": "NewSecurePassword123!"
+  }'
+```
+
+## Testing the Installation
+
+### 1. Health Check
+
+```bash
+curl "http://localhost:8000/api/v1/health"
+```
+
+**Expected Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "version": "0.1.0",
+  "services": {
+    "database": "healthy",
+    "redis": "healthy"
+  }
+}
+```
+
+### 2. API Documentation
+
+Visit the interactive API documentation:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### 3. Run Tests
 
 ```bash
 # Run all tests
 make test
 
+# Or using pytest directly
+poetry run pytest
+
 # Run with coverage
-make test-cov
+poetry run pytest --cov=src --cov-report=html
 
 # Run specific test categories
-poetry run pytest tests/unit/ -v
-poetry run pytest tests/integration/ -v
+poetry run pytest tests/unit/
+poetry run pytest tests/integration/
+poetry run pytest tests/feature/
+poetry run pytest tests/performance/
+poetry run pytest tests/security/
 ```
 
-## 7. Development Workflow
+## Development Commands
+
+### Using Makefile (Recommended)
 
 ```bash
+# Build and run development environment
+make build
+make run-dev
+
+# Run tests
+make test
+
+# Database operations
+make db-init
+make db-migrate
+make db-rollback
+
+# Code quality
+make lint
+make format
+
+# Cleanup
+make clean
+make clean-volumes
+
+# Health check
+make check-health
+```
+
+### Database Operations
+
+```bash
+# Create a new migration
+poetry run alembic revision --autogenerate -m "Description of changes"
+
+# Apply migrations
+make db-migrate
+
+# Rollback migrations
+make db-rollback
+
+# View migration history
+poetry run alembic history
+
+# Initialize database
+make db-init
+
+# Drop database
+make db-drop
+```
+
+### Code Quality
+
+```bash
+# Run linting
+make lint
+
 # Format code
 make format
 
-# Lint code
-make lint
+# Run type checking
+poetry run mypy src/
 
-# Run pre-commit hooks
-git add .
-git commit -m "Your commit message"
+# Run security checks
+poetry run bandit -r src/
+
+# Run all quality checks
+make lint && make format
 ```
 
-## Quick Commands Reference
+### Development Server
 
-| Command | Description |
-|---------|-------------|
-| `make run-dev` | Start development environment with Docker |
-| `make run-dev-local` | Start app locally (requires local PostgreSQL/Redis) |
-| `make test` | Run test suite |
-| `make format` | Format code with black and ruff |
-| `make lint` | Lint code with ruff and mypy |
-| `make db-migrate` | Apply database migrations |
-| `make compile-translations` | Compile i18n translations |
+```bash
+# Start development server with auto-reload
+make run-dev-local
 
-## Next Steps
+# Or using uvicorn directly
+poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
-1. **Explore the Architecture**: Read [Project Structure](../architecture/project-structure.md)
-2. **Understand Authentication**: Check [Authentication System](../features/authentication/README.md)
-3. **Configure Production**: See [Production Setup](../deployment/production.md)
-4. **Run Tests**: Follow [Testing Guide](../development/testing.md)
+# Start with specific environment
+APP_ENV=development poetry run uvicorn src.main:app --reload
+
+# Start with custom configuration
+poetry run uvicorn src.main:app --reload --log-level debug
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Database Connection Error**
+#### 1. Database Connection Error
+
+**Error**: `psycopg2.OperationalError: could not connect to server`
+
+**Solution**:
 ```bash
 # Check if PostgreSQL is running
-docker ps | grep postgres
+sudo systemctl status postgresql
 
-# Check logs
-docker-compose logs postgres
+# Start PostgreSQL if not running
+sudo systemctl start postgresql
+
+# Create database and user
+sudo -u postgres psql
+CREATE DATABASE cedrina;
+CREATE DATABASE cedrina_test;
+CREATE USER cedrina WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE cedrina TO cedrina;
+GRANT ALL PRIVILEGES ON DATABASE cedrina_test TO cedrina;
 ```
 
-**Port Already in Use**
+#### 2. Redis Connection Error
+
+**Error**: `redis.exceptions.ConnectionError`
+
+**Solution**:
 ```bash
-# Check what's using port 8000
-lsof -i :8000
+# Check if Redis is running
+redis-cli ping
 
-# Kill the process or change port in .env
-API_PORT=8001
+# Start Redis if not running
+sudo systemctl start redis
+
+# Or start Redis manually
+redis-server
 ```
 
-**Permission Denied**
+#### 3. JWT Key Errors
+
+**Error**: `FileNotFoundError: [Errno 2] No such file or directory: './keys/private.pem'`
+
+**Solution**:
 ```bash
-# Fix file permissions
-chmod +x entrypoint.sh
-chmod +x scripts/*.sh
+# Generate JWT keys
+mkdir -p keys
+openssl genrsa -out keys/private.pem 2048
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+
+# Set proper permissions
+chmod 600 keys/private.pem
+chmod 644 keys/public.pem
 ```
 
-### Getting Help
+#### 4. Import Errors
 
-- **Documentation**: Check the [troubleshooting guide](../reference/troubleshooting.md)
-- **Issues**: Create an issue on GitHub
-- **Logs**: Check application logs with `docker-compose logs app`
+**Error**: `ModuleNotFoundError: No module named 'src'`
 
-## Environment Variables
+**Solution**:
+```bash
+# Install in development mode
+poetry install
 
-Key environment variables for development:
+# Or set PYTHONPATH
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SECRET_KEY` | Application secret key | Required |
-| `POSTGRES_HOST` | PostgreSQL host | `postgres` (Docker) |
-| `POSTGRES_DB` | Database name | `cedrina_dev` |
-| `REDIS_HOST` | Redis host | `redis` (Docker) |
-| `DEBUG` | Debug mode | `false` |
-| `LOG_LEVEL` | Logging level | `INFO` |
+# Or use the Makefile which sets PYTHONPATH automatically
+make run-dev-local
+```
 
-## What's Next?
+#### 5. Poetry Issues
 
-You now have a working Cedrina application! Here's what you can do next:
+**Error**: `poetry: command not found`
 
-1. **Explore the API**: Try the authentication endpoints
-2. **Add Features**: Follow the architecture patterns to add new functionality
-3. **Deploy**: Set up staging and production environments
-4. **Contribute**: Check the contribution guidelines
+**Solution**:
+```bash
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3 -
 
-For detailed information, explore the rest of the documentation sections. 
+# Or using pip
+pip install poetry
+
+# Add to PATH (if needed)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Performance Issues
+
+#### 1. Slow Database Queries
+
+```bash
+# Enable query logging
+export SQLALCHEMY_ECHO=true
+
+# Check database performance
+docker-compose exec postgres psql -U cedrina -d cedrina -c "SELECT * FROM pg_stat_activity;"
+
+# Or for local PostgreSQL
+psql -h localhost -U cedrina -d cedrina -c "SELECT * FROM pg_stat_activity;"
+```
+
+#### 2. Memory Issues
+
+```bash
+# Monitor memory usage
+docker stats
+
+# Check application logs
+docker-compose logs app
+
+# Or for local development
+poetry run uvicorn src.main:app --reload --log-level debug
+```
+
+#### 3. Test Failures
+
+```bash
+# Run tests with verbose output
+poetry run pytest -v
+
+# Run specific failing test
+poetry run pytest tests/path/to/test_file.py::test_function -v
+
+# Run tests with coverage and see what's missing
+poetry run pytest --cov=src --cov-report=term-missing
+```
+
+## Next Steps
+
+After successful installation:
+
+1. **Review Architecture**: Read the [Architecture Overview](../architecture/overview.md)
+2. **Understand Security**: Study the [Security Architecture](../architecture/security-architecture.md)
+3. **Explore Domain Design**: Learn about [Domain-Driven Design](../architecture/domain-design.md)
+4. **Set Up Development**: Follow the [Development Guide](../development/README.md)
+5. **Learn Testing**: Review the [Testing Strategy](../architecture/testing-strategy.md)
+6. **Deploy to Production**: Review the [Deployment Guide](../deployment/overview.md)
+
+## Support
+
+- **Documentation**: Check the [Reference](../reference/) section
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/hdkhosravian/cedrina/issues)
+- **Discussions**: Join the [GitHub Discussions](https://github.com/hdkhosravian/cedrina/discussions)
+- **Security**: Follow the [Security Policy](https://github.com/hdkhosravian/cedrina/security/policy)
+
+---
+
+*Last updated: January 2025* 

@@ -1,568 +1,727 @@
-"""Authentication Domain Events.
+"""
+Domain Events for Authentication and Token Family Operations.
 
-These events represent significant business occurrences in the authentication domain
-that other parts of the system may need to react to (logging, monitoring, notifications).
+This module defines domain events that represent significant business occurrences
+in the authentication domain, following Domain-Driven Design principles.
+
+Domain Events:
+- TokenFamilyCreatedEvent: New token family established
+- TokenAddedEvent: Token added to family
+- TokenUsedEvent: Token usage recorded
+- TokenRevokedEvent: Token revoked from family
+- TokenReuseDetectedEvent: Security violation detected
+- TokenFamilyCompromisedEvent: Family-wide security breach
+- TokenRefreshedEvent: Token refresh completed
+- SecurityIncidentEvent: General security events
+- EmailConfirmedEvent: Email confirmation completed
+
+Event Properties:
+- Immutable data structures
+- Clear ubiquitous language
+- Correlation IDs for tracing
+- Timestamps for audit trails
+- Security context for forensic analysis
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from dataclasses import dataclass, field
+from enum import Enum
 
-from .password_reset_events import BaseDomainEvent
-from src.domain.value_objects.oauth_provider import OAuthProvider
-from src.domain.value_objects.oauth_token import OAuthToken
-from src.domain.value_objects.oauth_user_info import OAuthUserInfo
+from .base_events import (
+    BaseDomainEvent, 
+    UserEventMixin, 
+    TokenEventMixin, 
+    SecurityEventMixin, 
+    EmailEventMixin,
+    StringValidationMixin,
+    SessionEventMixin
+)
+
+
+class SecurityThreatLevel(Enum):
+    """Enumeration of security threat levels for risk assessment."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
-class UserRegisteredEvent(BaseDomainEvent):
-    """Event published when a user successfully registers.
+class EmailConfirmedEvent(BaseDomainEvent, EmailEventMixin, UserEventMixin):
+    """Domain event published when an email is confirmed."""
     
-    This event signals that a new user account has been created
-    and can trigger welcome emails, analytics, and audit logging.
-    
-    Attributes:
-        username: Username of the registered user
-        email: Email address of the registered user
-        role: Role assigned to the user
-        registration_source: Source of registration (web, api, etc.)
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-    """
-    
-    username: str
+    user_id: int
     email: str
-    role: str
-    registration_source: str = "web"
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_email(self.email)
     
     @classmethod
     def create(
         cls,
         user_id: int,
-        username: str,
         email: str,
-        role: str,
-        registration_source: str = "web",
         correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-    ) -> 'UserRegisteredEvent':
-        """Create user registration event with current timestamp.
-        
-        Args:
-            user_id: ID of the registered user
-            username: Username of the registered user
-            email: Email address of the registered user
-            role: Role assigned to the user
-            registration_source: Source of registration
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            
-        Returns:
-            UserRegisteredEvent: New event instance
-        """
+        timestamp: Optional[datetime] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "EmailConfirmedEvent":
+        """Create a new email confirmed event."""
         return cls(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user_id,
-            correlation_id=correlation_id,
-            username=username,
             email=email,
-            role=role,
-            registration_source=registration_source,
-            user_agent=user_agent,
-            ip_address=ip_address,
+            correlation_id=correlation_id,
+            timestamp=timestamp or datetime.now(timezone.utc),
+            metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class UserLoggedInEvent(BaseDomainEvent):
-    """Event published when a user successfully logs in.
+class AuthenticationFailedEvent(BaseDomainEvent, SecurityEventMixin, EmailEventMixin, UserEventMixin):
+    """Domain event published when authentication fails."""
+    reason: str
+    user_id: Optional[int] = None
+    email: Optional[str] = None
     
-    This event signals successful authentication and can trigger
-    security monitoring, analytics, and personalization features.
-    
-    Attributes:
-        username: Username of the authenticated user
-        login_method: Method used for login (password, oauth, etc.)
-        session_id: Session identifier for the login
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-        previous_login_at: Timestamp of previous login (if available)
-    """
-    
-    username: str
-    login_method: str = "password"
-    session_id: Optional[str] = None
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    previous_login_at: Optional[datetime] = None
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_reason(self.reason)
+        
+        if self.user_id is not None:
+            self._validate_user_id(self.user_id)
+        
+        if self.email is not None:
+            self._validate_email(self.email)
     
     @classmethod
     def create(
         cls,
-        user_id: int,
-        username: str,
-        login_method: str = "password",
-        session_id: Optional[str] = None,
+        reason: str,
+        user_id: Optional[int] = None,
+        email: Optional[str] = None,
         correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        previous_login_at: Optional[datetime] = None,
-    ) -> 'UserLoggedInEvent':
-        """Create user login event with current timestamp.
-        
-        Args:
-            user_id: ID of the authenticated user
-            username: Username of the authenticated user
-            login_method: Method used for login
-            session_id: Session identifier
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            previous_login_at: Timestamp of previous login
-            
-        Returns:
-            UserLoggedInEvent: New event instance
-        """
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "AuthenticationFailedEvent":
+        """Create a new authentication failed event."""
         return cls(
-            occurred_at=datetime.now(timezone.utc),
+            reason=reason,
             user_id=user_id,
+            email=email,
             correlation_id=correlation_id,
-            username=username,
-            login_method=login_method,
-            session_id=session_id,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            previous_login_at=previous_login_at,
+            metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class UserLoggedOutEvent(BaseDomainEvent):
-    """Event published when a user logs out.
+class TokenFamilyCreatedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
+    """Domain event published when a new token family is created."""
     
-    This event signals session termination and can trigger
-    security monitoring and session cleanup operations.
+    family_id: str
+    user_id: int
     
-    Attributes:
-        username: Username of the user who logged out
-        session_id: Session identifier that was terminated
-        logout_reason: Reason for logout (user_initiated, expired, revoked)
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-        session_duration: Duration of the session in seconds
-    """
-    
-    username: str
-    session_id: Optional[str] = None
-    logout_reason: str = "user_initiated"
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    session_duration: Optional[int] = None
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
     
     @classmethod
     def create(
         cls,
+        family_id: str,
         user_id: int,
-        username: str,
-        session_id: Optional[str] = None,
-        logout_reason: str = "user_initiated",
         correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        session_duration: Optional[int] = None,
-    ) -> 'UserLoggedOutEvent':
-        """Create user logout event with current timestamp.
-        
-        Args:
-            user_id: ID of the user who logged out
-            username: Username of the user
-            session_id: Session identifier that was terminated
-            logout_reason: Reason for logout
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            session_duration: Duration of the session in seconds
-            
-        Returns:
-            UserLoggedOutEvent: New event instance
-        """
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenFamilyCreatedEvent":
+        """Create a new token family created event."""
         return cls(
-            occurred_at=datetime.now(timezone.utc),
+            family_id=family_id,
             user_id=user_id,
             correlation_id=correlation_id,
-            username=username,
-            session_id=session_id,
-            logout_reason=logout_reason,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            session_duration=session_duration,
+            metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class TokenRefreshedEvent(BaseDomainEvent):
-    """Event published when JWT tokens are refreshed.
+class TokenAddedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
+    """Domain event published when a token is added to a family."""
     
-    This event signals token rotation and can trigger security
-    monitoring and analytics.
+    family_id: str
+    token_id: str
+    user_id: int
     
-    Attributes:
-        username: Username of the user refreshing tokens
-        old_token_id: ID of the old refresh token
-        new_token_id: ID of the new refresh token
-        token_type: Type of token refreshed (refresh, access)
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-    """
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_token_id(self.token_id)
     
-    username: str
+    @classmethod
+    def create(
+        cls,
+        family_id: str,
+        token_id: str,
+        user_id: int,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenAddedEvent":
+        """Create a new token added event."""
+        return cls(
+            family_id=family_id,
+            token_id=token_id,
+            user_id=user_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class TokenUsedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
+    """Domain event published when a token is used."""
+    
+    family_id: str
+    token_id: str
+    user_id: int
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_token_id(self.token_id)
+    
+    @classmethod
+    def create(
+        cls,
+        family_id: str,
+        token_id: str,
+        user_id: int,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenUsedEvent":
+        """Create a new token used event."""
+        return cls(
+            family_id=family_id,
+            token_id=token_id,
+            user_id=user_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class TokenRevokedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
+    """Domain event published when a token is revoked."""
+    
+    family_id: str
+    token_id: str
+    user_id: int
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_token_id(self.token_id)
+    
+    @classmethod
+    def create(
+        cls,
+        family_id: str,
+        token_id: str,
+        user_id: int,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenRevokedEvent":
+        """Create a new token revoked event."""
+        return cls(
+            family_id=family_id,
+            token_id=token_id,
+            user_id=user_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class TokenReuseDetectedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin, SecurityEventMixin):
+    """Domain event published when token reuse is detected."""
+    
+    family_id: str
+    token_id: str
+    user_id: int
+    reason: str
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_token_id(self.token_id)
+        self._validate_reason(self.reason)
+    
+    @classmethod
+    def create(
+        cls,
+        family_id: str,
+        token_id: str,
+        user_id: int,
+        reason: str,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenReuseDetectedEvent":
+        """Create a new token reuse detected event."""
+        return cls(
+            family_id=family_id,
+            token_id=token_id,
+            user_id=user_id,
+            reason=reason,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class TokenFamilyCompromisedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin, SecurityEventMixin):
+    """Domain event published when a token family is compromised."""
+    
+    family_id: str
+    user_id: int
+    reason: str
+    detected_token: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_reason(self.reason)
+        
+        if self.detected_token is not None:
+            self._validate_token_id(self.detected_token)
+    
+    @classmethod
+    def create(
+        cls,
+        family_id: str,
+        user_id: int,
+        reason: str,
+        detected_token: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenFamilyCompromisedEvent":
+        """Create a new token family compromised event."""
+        return cls(
+            family_id=family_id,
+            user_id=user_id,
+            reason=reason,
+            detected_token=detected_token,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class TokenRefreshedEvent(BaseDomainEvent, UserEventMixin, TokenEventMixin):
+    """Domain event published when tokens are refreshed."""
+    
+    family_id: str
     old_token_id: str
     new_token_id: str
-    token_type: str = "refresh"
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
+    user_id: int
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_family_id(self.family_id)
+        self._validate_token_id(self.old_token_id)
+        self._validate_token_id(self.new_token_id)
+        
+        if self.old_token_id == self.new_token_id:
+            raise ValueError("Old and new token IDs must be different")
     
     @classmethod
     def create(
         cls,
-        user_id: int,
-        username: str,
+        family_id: str,
         old_token_id: str,
         new_token_id: str,
-        token_type: str = "refresh",
+        user_id: int,
         correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-    ) -> 'TokenRefreshedEvent':
-        """Create token refresh event with current timestamp.
-        
-        Args:
-            user_id: ID of the user refreshing tokens
-            username: Username of the user
-            old_token_id: ID of the old refresh token
-            new_token_id: ID of the new refresh token
-            token_type: Type of token refreshed
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            
-        Returns:
-            TokenRefreshedEvent: New event instance
-        """
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "TokenRefreshedEvent":
+        """Create a new token refreshed event."""
         return cls(
-            occurred_at=datetime.now(timezone.utc),
-            user_id=user_id,
-            correlation_id=correlation_id,
-            username=username,
+            family_id=family_id,
             old_token_id=old_token_id,
             new_token_id=new_token_id,
-            token_type=token_type,
-            user_agent=user_agent,
-            ip_address=ip_address,
-        )
-
-
-@dataclass(frozen=True)
-class AuthenticationFailedEvent(BaseDomainEvent):
-    """Event published when authentication fails.
-    
-    This event signals failed authentication attempts and can trigger
-    security monitoring, rate limiting, and threat detection.
-    
-    Attributes:
-        attempted_username: Username that was attempted
-        failure_reason: Reason for authentication failure
-        attempt_source: Source of the attempt (login, api, etc.)
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-        attempts_count: Number of consecutive failed attempts
-    """
-    
-    attempted_username: str
-    failure_reason: str
-    attempt_source: str = "login"
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    attempts_count: int = 1
-    
-    @classmethod
-    def create(
-        cls,
-        attempted_username: str,
-        failure_reason: str,
-        attempt_source: str = "login",
-        correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        attempts_count: int = 1,
-    ) -> 'AuthenticationFailedEvent':
-        """Create authentication failure event with current timestamp.
-        
-        Args:
-            attempted_username: Username that was attempted
-            failure_reason: Reason for authentication failure
-            attempt_source: Source of the attempt
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            attempts_count: Number of consecutive failed attempts
-            
-        Returns:
-            AuthenticationFailedEvent: New event instance
-        """
-        return cls(
-            occurred_at=datetime.now(timezone.utc),
-            user_id=0,  # No valid user ID for failed attempts
-            correlation_id=correlation_id,
-            attempted_username=attempted_username,
-            failure_reason=failure_reason,
-            attempt_source=attempt_source,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            attempts_count=attempts_count,
-        )
-
-
-@dataclass(frozen=True)
-class PasswordChangedEvent(BaseDomainEvent):
-    """Event published when a user changes their password.
-    
-    This event signals password updates and can trigger security
-    notifications and audit logging.
-    
-    Attributes:
-        username: Username of the user who changed password
-        change_method: Method used to change password (self_service, admin, reset)
-        user_agent: Browser/client user agent
-        ip_address: Client IP address
-        forced_change: Whether password change was forced
-    """
-    
-    username: str
-    change_method: str = "self_service"
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    forced_change: bool = False
-    
-    @classmethod
-    def create(
-        cls,
-        user_id: int,
-        username: str,
-        change_method: str = "self_service",
-        correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        forced_change: bool = False,
-    ) -> 'PasswordChangedEvent':
-        """Create password change event with current timestamp.
-        
-        Args:
-            user_id: ID of the user who changed password
-            username: Username of the user
-            change_method: Method used to change password
-            correlation_id: Optional correlation ID for tracking
-            user_agent: Browser/client user agent
-            ip_address: Client IP address
-            forced_change: Whether password change was forced
-            
-        Returns:
-            PasswordChangedEvent: New event instance
-        """
-        return cls(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user_id,
             correlation_id=correlation_id,
-            username=username,
-            change_method=change_method,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            forced_change=forced_change,
+            metadata=metadata or {}
         )
 
 
 @dataclass(frozen=True)
-class EmailConfirmedEvent(BaseDomainEvent):
-    """Event published when a user confirms their email."""
+class SecurityIncidentEvent(BaseDomainEvent, SecurityEventMixin, StringValidationMixin, UserEventMixin, TokenEventMixin):
+    """Domain event published for general security incidents."""
+    
+    incident_type: str
+    threat_level: SecurityThreatLevel
+    description: str
+    user_id: Optional[int] = None
+    family_id: Optional[str] = None
+    token_id: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_required_string(self.incident_type, "Incident type")
+        self._validate_required_string(self.description, "Description")
+        
+        if self.user_id is not None:
+            self._validate_user_id(self.user_id)
+        
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
+        
+        if self.token_id is not None:
+            self._validate_token_id(self.token_id)
+    
+    @classmethod
+    def create(
+        cls,
+        incident_type: str,
+        threat_level: SecurityThreatLevel,
+        description: str,
+        user_id: Optional[int] = None,
+        family_id: Optional[str] = None,
+        token_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SecurityIncidentEvent":
+        """Create a new security incident event."""
+        return cls(
+            incident_type=incident_type,
+            threat_level=threat_level,
+            description=description,
+            user_id=user_id,
+            family_id=family_id,
+            token_id=token_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
 
-    username: str
 
+@dataclass(frozen=True)
+class UserAuthenticationEvent(BaseDomainEvent, UserEventMixin):
+    """Domain event published for user authentication events."""
+    
+    event_type: str  # "login", "logout", "failed_login", "password_changed", etc.
+    user_id: int
+    success: bool
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_required_string(self.event_type, "Event type")
+    
+    @classmethod
+    def create(
+        cls,
+        event_type: str,
+        user_id: int,
+        success: bool,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "UserAuthenticationEvent":
+        """Create a new user authentication event."""
+        return cls(
+            event_type=event_type,
+            user_id=user_id,
+            success=success,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class SessionEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin):
+    """Domain event published for session-related events."""
+    
+    event_type: str  # "created", "revoked", "expired", "refreshed"
+    session_id: str
+    user_id: int
+    family_id: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_event_type(self.event_type)
+        self._validate_session_id(self.session_id)
+        
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
+    
+    @classmethod
+    def create(
+        cls,
+        event_type: str,
+        session_id: str,
+        user_id: int,
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SessionEvent":
+        """Create a new session event."""
+        return cls(
+            event_type=event_type,
+            session_id=session_id,
+            user_id=user_id,
+            family_id=family_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class UserLoggedInEvent(BaseDomainEvent, UserEventMixin, EmailEventMixin):
+    """Domain event published when a user logs in successfully."""
+    user_id: int
+    email: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        
+        if self.email is not None:
+            self._validate_email(self.email)
+    
     @classmethod
     def create(
         cls,
         user_id: int,
-        username: str,
+        email: Optional[str] = None,
         correlation_id: Optional[str] = None,
-    ) -> "EmailConfirmedEvent":
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "UserLoggedInEvent":
         return cls(
-            occurred_at=datetime.now(timezone.utc),
+            user_id=user_id,
+            email=email,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class UserRegisteredEvent(BaseDomainEvent, UserEventMixin, EmailEventMixin):
+    """Domain event published when a user registers successfully."""
+    user_id: int
+    email: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_email(self.email)
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        email: str,
+        correlation_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "UserRegisteredEvent":
+        return cls(
+            user_id=user_id,
+            email=email,
+            correlation_id=correlation_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class UserLoggedOutEvent(BaseDomainEvent, UserEventMixin):
+    """Domain event published when a user logs out successfully."""
+    user_id: int
+    
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+    
+    @classmethod
+    def create(
+        cls,
+        user_id: int,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "UserLoggedOutEvent":
+        return cls(
             user_id=user_id,
             correlation_id=correlation_id,
-            username=username,
+            metadata=metadata or {}
         )
 
 
-class OAuthAuthenticationSuccessEvent(BaseDomainEvent):
-    """Domain event for successful OAuth authentication.
+@dataclass(frozen=True)
+class PasswordChangedEvent(BaseDomainEvent, UserEventMixin):
+    """Domain event published when a user changes their password."""
+    user_id: int
     
-    This event is published when a user successfully authenticates
-    via OAuth, providing audit trails and security monitoring.
-    """
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
     
-    def __init__(
-        self,
+    @classmethod
+    def create(
+        cls,
         user_id: int,
-        provider: OAuthProvider,
-        user_info: OAuthUserInfo,
-        correlation_id: str,
-        user_agent: str,
-        ip_address: str,
-        language: str = "en",
-    ):
-        """Initialize OAuth authentication success event.
-        
-        Args:
-            user_id: ID of the authenticated user
-            provider: OAuth provider used for authentication
-            user_info: User information from OAuth provider
-            correlation_id: Request correlation ID for tracing
-            user_agent: Client user agent string
-            ip_address: Client IP address
-            language: Language code for I18N
-        """
-        super().__init__(
-            event_type="oauth_authentication_success",
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "PasswordChangedEvent":
+        return cls(
+            user_id=user_id,
             correlation_id=correlation_id,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            language=language,
+            metadata=metadata or {}
         )
-        self.user_id = user_id
-        self.provider = provider
-        self.user_info = user_info
+
+
+@dataclass(frozen=True)
+class SessionCreatedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
+    """Domain event published when a session is created."""
+    session_id: str
+    user_id: int
+    family_id: Optional[str] = None
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert event to dictionary for serialization.
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_session_id(self.session_id)
         
-        Returns:
-            Dict[str, Any]: Event data dictionary
-        """
-        base_data = super().to_dict()
-        base_data.update({
-            "user_id": self.user_id,
-            "provider": str(self.provider),
-            "user_info": self.user_info.mask_for_logging(),
-        })
-        return base_data
-
-
-class OAuthAuthenticationFailedEvent(BaseDomainEvent):
-    """Domain event for failed OAuth authentication.
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
     
-    This event is published when OAuth authentication fails,
-    providing audit trails and security monitoring.
-    """
-    
-    def __init__(
-        self,
-        provider: OAuthProvider,
-        failure_reason: str,
-        correlation_id: str,
-        user_agent: str,
-        ip_address: str,
-        language: str = "en",
-        user_info: Optional[OAuthUserInfo] = None,
-    ):
-        """Initialize OAuth authentication failure event.
-        
-        Args:
-            provider: OAuth provider used for authentication
-            failure_reason: Reason for authentication failure
-            correlation_id: Request correlation ID for tracing
-            user_agent: Client user agent string
-            ip_address: Client IP address
-            language: Language code for I18N
-            user_info: User information if available
-        """
-        super().__init__(
-            event_type="oauth_authentication_failed",
-            correlation_id=correlation_id,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            language=language,
-        )
-        self.provider = provider
-        self.failure_reason = failure_reason
-        self.user_info = user_info
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert event to dictionary for serialization.
-        
-        Returns:
-            Dict[str, Any]: Event data dictionary
-        """
-        base_data = super().to_dict()
-        base_data.update({
-            "provider": str(self.provider),
-            "failure_reason": self.failure_reason,
-            "user_info": self.user_info.mask_for_logging() if self.user_info else None,
-        })
-        return base_data
-
-
-class OAuthProfileLinkedEvent(BaseDomainEvent):
-    """Domain event for OAuth profile linking.
-    
-    This event is published when an OAuth profile is linked
-    to an existing user account.
-    """
-    
-    def __init__(
-        self,
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
         user_id: int,
-        provider: OAuthProvider,
-        user_info: OAuthUserInfo,
-        correlation_id: str,
-        user_agent: str,
-        ip_address: str,
-        language: str = "en",
-    ):
-        """Initialize OAuth profile linked event.
-        
-        Args:
-            user_id: ID of the user whose profile was linked
-            provider: OAuth provider used for linking
-            user_info: User information from OAuth provider
-            correlation_id: Request correlation ID for tracing
-            user_agent: Client user agent string
-            ip_address: Client IP address
-            language: Language code for I18N
-        """
-        super().__init__(
-            event_type="oauth_profile_linked",
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SessionCreatedEvent":
+        return cls(
+            session_id=session_id,
+            user_id=user_id,
+            family_id=family_id,
             correlation_id=correlation_id,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            language=language,
+            metadata=metadata or {}
         )
-        self.user_id = user_id
-        self.provider = provider
-        self.user_info = user_info
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert event to dictionary for serialization.
+
+
+@dataclass(frozen=True)
+class SessionRevokedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
+    """Domain event published when a session is revoked."""
+    session_id: str
+    user_id: int
+    family_id: Optional[str] = None
+    reason: Optional[str] = None
+
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_session_id(self.session_id)
         
-        Returns:
-            Dict[str, Any]: Event data dictionary
-        """
-        base_data = super().to_dict()
-        base_data.update({
-            "user_id": self.user_id,
-            "provider": str(self.provider),
-            "user_info": self.user_info.mask_for_logging(),
-        })
-        return base_data 
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
+
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
+        user_id: int,
+        family_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SessionRevokedEvent":
+        return cls(
+            session_id=session_id,
+            user_id=user_id,
+            family_id=family_id,
+            reason=reason,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class SessionExpiredEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
+    """Domain event published when a session expires."""
+    session_id: str
+    user_id: int
+    family_id: Optional[str] = None
+
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_session_id(self.session_id)
+        
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
+
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
+        user_id: int,
+        family_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SessionExpiredEvent":
+        return cls(
+            session_id=session_id,
+            user_id=user_id,
+            family_id=family_id,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        )
+
+
+@dataclass(frozen=True)
+class SessionActivityUpdatedEvent(BaseDomainEvent, UserEventMixin, SessionEventMixin, TokenEventMixin):
+    """Domain event published when session activity is updated."""
+    session_id: str
+    user_id: int
+    family_id: Optional[str] = None
+    activity_type: Optional[str] = None
+
+    def _validate_event_data(self) -> None:
+        """Validate event data."""
+        self._validate_user_id(self.user_id)
+        self._validate_session_id(self.session_id)
+        
+        if self.family_id is not None:
+            self._validate_family_id(self.family_id)
+
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
+        user_id: int,
+        family_id: Optional[str] = None,
+        activity_type: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> "SessionActivityUpdatedEvent":
+        return cls(
+            session_id=session_id,
+            user_id=user_id,
+            family_id=family_id,
+            activity_type=activity_type,
+            correlation_id=correlation_id,
+            metadata=metadata or {}
+        ) 

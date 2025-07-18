@@ -10,6 +10,7 @@ from unittest.mock import patch, Mock
 
 import pytest
 
+from src.common.exceptions import TokenFormatError
 from src.domain.value_objects.reset_token import ResetToken
 
 
@@ -70,7 +71,7 @@ class TestResetToken:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Token cannot be empty"):
+        with pytest.raises(TokenFormatError, match="Token cannot be empty"):
             ResetToken.from_existing("", expires_at)
     
     def test_token_value_validation_wrong_length(self):
@@ -80,10 +81,10 @@ class TestResetToken:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Token must be between"):
+        with pytest.raises(TokenFormatError, match="Token must be between"):
             ResetToken.from_existing(short_token, expires_at)
         long_token = "A" + "b" + "1" + "!" + "x" * (ResetToken.MAX_TOKEN_LENGTH + 1)
-        with pytest.raises(ValueError, match="Token must be between"):
+        with pytest.raises(TokenFormatError, match="Token must be between"):
             ResetToken.from_existing(long_token, expires_at)
     
     def test_token_value_validation_character_diversity(self):
@@ -94,19 +95,19 @@ class TestResetToken:
         # Act & Assert
         # Missing uppercase
         token = "b" + "1" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
-        with pytest.raises(ValueError, match="uppercase"):
+        with pytest.raises(TokenFormatError, match="uppercase"):
             ResetToken.from_existing(token, expires_at)
         # Missing lowercase
         token = "A" + "1" + "!" + "X" * (ResetToken.MIN_TOKEN_LENGTH - 3)
-        with pytest.raises(ValueError, match="lowercase"):
+        with pytest.raises(TokenFormatError, match="lowercase"):
             ResetToken.from_existing(token, expires_at)
         # Missing digit
         token = "A" + "b" + "!" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
-        with pytest.raises(ValueError, match="digit"):
+        with pytest.raises(TokenFormatError, match="at least one digit"):
             ResetToken.from_existing(token, expires_at)
         # Missing special
         token = "A" + "b" + "1" + "x" * (ResetToken.MIN_TOKEN_LENGTH - 3)
-        with pytest.raises(ValueError, match="special"):
+        with pytest.raises(TokenFormatError, match="special"):
             ResetToken.from_existing(token, expires_at)
     
     def test_expiry_validation_empty(self):
@@ -272,7 +273,7 @@ class TestResetToken:
         
         # Test with invalid token (missing character diversity)
         invalid_token = "a" * ResetToken.MIN_TOKEN_LENGTH  # Only lowercase
-        with pytest.raises(ValueError, match="uppercase"):
+        with pytest.raises(TokenFormatError, match="uppercase"):
             ResetToken.from_existing(invalid_token, expires_at)
 
     @patch('src.domain.value_objects.reset_token.secrets.SystemRandom')

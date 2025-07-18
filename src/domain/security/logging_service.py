@@ -15,17 +15,18 @@ Key Security Features:
 
 import hashlib
 import hmac
-import secrets
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import structlog
 
-from src.utils.i18n import get_translated_message
+from src.core.config.settings import settings
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -80,10 +81,59 @@ class SecurityEvent:
         """Calculate integrity hash for tamper detection."""
         if not self.integrity_hash:
             content = f"{self.event_id}{self.timestamp.isoformat()}{self.event_type}{self.description}"
-            # Use HMAC for integrity protection (key would be from config in production)
-            secret_key = b"audit_integrity_key_should_be_from_config"
+            
+            # Get integrity key from environment with fallback
+            secret_key = self._get_integrity_key()
+            
+            # Calculate HMAC for integrity protection
             hash_value = hmac.new(secret_key, content.encode(), hashlib.sha256).hexdigest()
             object.__setattr__(self, 'integrity_hash', hash_value)
+    
+    def _get_integrity_key(self) -> bytes:
+        """Get integrity key from environment with secure fallback.
+        
+        Returns:
+            bytes: Integrity key for HMAC calculation
+            
+        Raises:
+            RuntimeError: If no integrity key is configured
+        """
+        # Try environment variable first
+        key = os.getenv("AUDIT_INTEGRITY_KEY")
+        if key:
+            return key.encode()
+        
+        # Try settings configuration
+        try:
+            key = settings.get_audit_integrity_key()
+            if key:
+                return key.encode()
+        except (AttributeError, KeyError):
+            pass
+        
+        # Try alternative environment variable
+        key = os.getenv("SECURITY_INTEGRITY_KEY")
+        if key:
+            return key.encode()
+        
+        # Try application secret (not recommended for production)
+        try:
+            app_secret = settings.SECRET_KEY
+            if app_secret:
+                # Derive audit key from app secret
+                derived_key = hashlib.sha256(f"{app_secret}:audit_integrity".encode()).digest()
+                return derived_key
+        except (AttributeError, KeyError):
+            pass
+        
+        # Critical error: no integrity key available
+        logger.critical(
+            "No audit integrity key configured - audit trail integrity compromised",
+            error="AUDIT_INTEGRITY_KEY environment variable required"
+        )
+        raise RuntimeError(
+            "AUDIT_INTEGRITY_KEY environment variable must be set for secure audit logging"
+        )
 
 
 class SecureLoggingService:

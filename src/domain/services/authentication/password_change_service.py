@@ -10,7 +10,7 @@ from typing import Optional
 
 import structlog
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     AuthenticationError,
     InvalidOldPasswordError,
     PasswordPolicyError,
@@ -19,14 +19,17 @@ from src.core.exceptions import (
 from src.domain.entities.user import User
 from src.domain.events.authentication_events import PasswordChangedEvent
 from src.domain.interfaces.repositories import IUserRepository
-from src.domain.interfaces import IEventPublisher, IPasswordChangeService
+from src.domain.interfaces.authentication.password_change import IPasswordChangeService
+from src.domain.interfaces import IEventPublisher
 from src.domain.value_objects.password import Password
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+
+from .base_authentication_service import BaseAuthenticationService, ServiceContext
 
 logger = structlog.get_logger(__name__)
 
 
-class PasswordChangeService(IPasswordChangeService):
+class PasswordChangeService(IPasswordChangeService, BaseAuthenticationService):
     """Clean architecture password change service following DDD principles.
     
     This service implements secure password change operations with:
@@ -55,8 +58,8 @@ class PasswordChangeService(IPasswordChangeService):
             user_repository: Repository for user data operations
             event_publisher: Service for publishing domain events
         """
+        super().__init__(event_publisher)
         self._user_repository = user_repository
-        self._event_publisher = event_publisher
         
         logger.info("PasswordChangeService initialized with clean architecture")
 
@@ -106,111 +109,59 @@ class PasswordChangeService(IPasswordChangeService):
         # Generate correlation ID if not provided
         if not correlation_id:
             correlation_id = str(uuid.uuid4())
-            
-        # Create structured logger with security context
-        request_logger = logger.bind(
+        
+        context = ServiceContext(
             correlation_id=correlation_id,
-            user_id=user_id,
-            client_ip=client_ip[:15] + "***" if len(client_ip) > 15 else client_ip,
-            user_agent=user_agent[:50] + "***" if len(user_agent) > 50 else user_agent,
+            language=language,
+            client_ip=client_ip,
+            user_agent=user_agent,
             operation="password_change"
         )
         
-        request_logger.info(
-            "Password change initiated",
-            has_old_password=bool(old_password),
-            has_new_password=bool(new_password)
-        )
-        
-        try:
+        async with self._operation_context(context) as ctx:
             # Step 1: Validate input parameters
-            self._validate_input_parameters(old_password, new_password)
+            self._validate_required_parameters({
+                "old_password": old_password,
+                "new_password": new_password
+            }, ctx)
             
             # Step 2: Retrieve and validate user
-            user = await self._get_and_validate_user(user_id, language, request_logger)
+            user = await self._get_and_validate_user(user_id, ctx)
             
             # Step 3: Create domain value objects for password validation
             old_password_obj = Password(old_password)
             new_password_obj = Password(new_password)
             
-            request_logger.debug("Domain value objects created successfully")
+            logger.debug("Domain value objects created successfully", correlation_id=ctx.correlation_id)
             
             # Step 4: Verify old password
-            await self._verify_old_password(user, old_password_obj, language, request_logger)
+            await self._verify_old_password(user, old_password_obj, ctx)
             
             # Step 5: Check password reuse
-            self._check_password_reuse(old_password_obj, new_password_obj, language, request_logger)
+            self._check_password_reuse(old_password_obj, new_password_obj, ctx)
             
             # Step 6: Update user password
-            await self._update_user_password(user, new_password_obj, request_logger)
+            await self._update_user_password(user, new_password_obj, ctx)
             
             # Step 7: Publish domain event for audit trails
-            await self._publish_password_changed_event(
-                user, client_ip, user_agent, correlation_id, request_logger
-            )
+            await self._publish_password_changed_event(user, ctx)
             
-            request_logger.info(
+            logger.info(
                 "Password change completed successfully",
-                username=user.username[:3] + "***" if user.username else "unknown"
+                username=user.username[:3] + "***" if user.username else "unknown",
+                correlation_id=ctx.correlation_id
             )
-            
-        except (ValueError, AuthenticationError, InvalidOldPasswordError, 
-                PasswordReuseError, PasswordPolicyError) as e:
-            # Log security-relevant failures
-            request_logger.warning(
-                "Password change failed",
-                error_type=type(e).__name__,
-                error_message=str(e)
-            )
-            # For ValueError (password validation errors), convert to PasswordPolicyError
-            # to provide a more appropriate error type for API responses
-            if isinstance(e, ValueError):
-                raise PasswordPolicyError(str(e)) from e
-            else:
-                raise
-            
-        except Exception as e:
-            # Log unexpected errors
-            request_logger.error(
-                "Password change failed with unexpected error",
-                error_type=type(e).__name__,
-                error_message=str(e)
-            )
-            raise AuthenticationError(
-                get_translated_message("password_change_service_unavailable", language)
-            ) from e
-
-    def _validate_input_parameters(self, old_password: str, new_password: str) -> None:
-        """Validate input parameters for password change.
-        
-        Args:
-            old_password: Current password
-            new_password: New password
-            
-        Raises:
-            ValueError: If parameters are invalid
-        """
-        if old_password is None:
-            raise ValueError("Old password cannot be None")
-        if new_password is None:
-            raise ValueError("New password cannot be None")
-        if not old_password.strip():
-            raise ValueError("Old password cannot be empty")
-        if not new_password.strip():
-            raise ValueError("New password cannot be empty")
 
     async def _get_and_validate_user(
         self, 
         user_id: int, 
-        language: str, 
-        request_logger: structlog.BoundLogger
+        context: ServiceContext
     ) -> User:
         """Retrieve and validate user exists and is active.
         
         Args:
             user_id: User ID to retrieve
-            language: Language for error messages
-            request_logger: Bound logger for context
+            context: Service context
             
         Returns:
             User: Retrieved and validated user
@@ -220,18 +171,19 @@ class PasswordChangeService(IPasswordChangeService):
         """
         user = await self._user_repository.get_by_id(user_id)
         if not user:
-            request_logger.warning("Password change attempted for non-existent user")
+            logger.warning("Password change attempted for non-existent user", correlation_id=context.correlation_id)
             raise AuthenticationError(
-                get_translated_message("user_not_found", language)
+                get_translated_message("user_not_found", context.language)
             )
 
         if not user.is_active:
-            request_logger.warning(
+            logger.warning(
                 "Password change attempted for inactive user",
-                username=user.username[:3] + "***" if user.username else "unknown"
+                username=user.username[:3] + "***" if user.username else "unknown",
+                correlation_id=context.correlation_id
             )
             raise AuthenticationError(
-                get_translated_message("user_account_inactive", language)
+                get_translated_message("user_account_inactive", context.language)
             )
             
         return user
@@ -240,104 +192,116 @@ class PasswordChangeService(IPasswordChangeService):
         self, 
         user: User, 
         old_password: Password, 
-        language: str,
-        request_logger: structlog.BoundLogger
+        context: ServiceContext
     ) -> None:
         """Verify the old password is correct.
         
         Args:
             user: User entity
             old_password: Old password value object
-            language: Language for error messages
-            request_logger: Bound logger for context
+            context: Service context
             
         Raises:
             InvalidOldPasswordError: If old password is incorrect
         """
-        if not old_password.verify_against_hash(user.hashed_password):
-            request_logger.warning(
-                "Invalid old password provided for password change",
-                username=user.username[:3] + "***" if user.username else "unknown"
+        if not user.verify_password(old_password.value):
+            logger.warning(
+                "Password change failed - invalid old password",
+                username=user.username[:3] + "***" if user.username else "unknown",
+                correlation_id=context.correlation_id
             )
             raise InvalidOldPasswordError(
-                get_translated_message("invalid_old_password", language)
+                get_translated_message("invalid_old_password", context.language)
             )
 
     def _check_password_reuse(
         self, 
         old_password: Password, 
         new_password: Password, 
-        language: str,
-        request_logger: structlog.BoundLogger
+        context: ServiceContext
     ) -> None:
-        """Check if new password is different from old password.
+        """Check that new password is different from old password.
         
         Args:
             old_password: Old password value object
             new_password: New password value object
-            language: Language for error messages
-            request_logger: Bound logger for context
+            context: Service context
             
         Raises:
-            PasswordReuseError: If passwords are the same
+            PasswordReuseError: If new password is same as old password
         """
-        if old_password.value == new_password.value:
-            request_logger.warning("Password change attempted with same password")
+        if str(old_password) == str(new_password):
+            logger.warning(
+                "Password change failed - password reuse attempted",
+                correlation_id=context.correlation_id
+            )
             raise PasswordReuseError(
-                get_translated_message("new_password_must_be_different", language)
+                get_translated_message("password_reuse_not_allowed", context.language)
             )
 
     async def _update_user_password(
         self, 
         user: User, 
         new_password: Password,
-        request_logger: structlog.BoundLogger
+        context: ServiceContext
     ) -> None:
-        """Update user password in the repository.
+        """Update user password in repository.
         
         Args:
-            user: User entity to update
+            user: User entity
             new_password: New password value object
-            request_logger: Bound logger for context
+            context: Service context
         """
-        # Hash the new password and update user
+        # Update user password
         user.hashed_password = new_password.to_hashed().value
-        
-        # Save to repository
         await self._user_repository.save(user)
         
-        request_logger.debug("User password updated successfully")
+        logger.debug(
+            "User password updated successfully",
+            username=user.username[:3] + "***" if user.username else "unknown",
+            correlation_id=context.correlation_id
+        )
 
     async def _publish_password_changed_event(
         self,
         user: User,
-        client_ip: str,
-        user_agent: str,
-        correlation_id: str,
-        request_logger: structlog.BoundLogger
+        context: ServiceContext
     ) -> None:
-        """Publish password changed domain event for audit trails.
+        """Publish domain event for password change.
         
         Args:
-            user: User entity
-            client_ip: Client IP address
-            user_agent: User agent string
-            correlation_id: Correlation ID
-            request_logger: Bound logger for context
+            user: User who changed password
+            context: Service context
         """
+        # Create metadata with additional context information
+        metadata = {
+            "username": user.username,
+            "user_agent": context.user_agent,
+            "ip_address": context.client_ip,
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "change_method": "self_service",
+            "forced_change": False
+        }
+        
         event = PasswordChangedEvent.create(
             user_id=user.id,
-            username=user.username or "unknown",
-            change_method="self_service",
-            correlation_id=correlation_id,
-            user_agent=user_agent,
-            ip_address=client_ip,
-            forced_change=False
+            correlation_id=context.correlation_id,
+            metadata=metadata
         )
         
-        await self._event_publisher.publish(event)
+        await self._publish_domain_event(event, context, logger)
+
+    async def _validate_operation_prerequisites(self, context: ServiceContext) -> None:
+        """Validate operation prerequisites for password change.
         
-        request_logger.debug(
-            "Password changed event published",
-            event_type="PasswordChangedEvent"
-        ) 
+        Args:
+            context: Service context
+            
+        Raises:
+            AuthenticationError: If prerequisites are not met
+        """
+        # Password change service requires user repository to be available
+        if not self._user_repository:
+            raise AuthenticationError(
+                get_translated_message("service_unavailable", context.language)
+            ) 

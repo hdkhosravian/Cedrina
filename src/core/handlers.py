@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette import status
 from structlog import get_logger
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     AuthenticationError,
     CedrinaError,
     DatabaseError,
@@ -27,10 +27,11 @@ from src.core.exceptions import (
     PasswordValidationError,
     PermissionError,
     RateLimitExceededError,
+    TokenFormatError,
     UserNotFoundError,
     ValidationError,
 )
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_translated_message, extract_language_from_request
 
 __all__ = [
     "authentication_error_handler",
@@ -68,6 +69,7 @@ async def authentication_error_handler(request: Request, exc: AuthenticationErro
     Returns:
         A `JSONResponse` with a 401 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     logger.warning(
         "Authentication failure",
         error=exc.code,
@@ -76,7 +78,7 @@ async def authentication_error_handler(request: Request, exc: AuthenticationErro
     )
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        content={"detail": str(exc)},
+        content={"detail": get_translated_message(str(exc), locale)},
     )
 
 
@@ -93,9 +95,10 @@ async def duplicate_user_error_handler(request: Request, exc: DuplicateUserError
     Returns:
         A `JSONResponse` with a 409 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -112,9 +115,10 @@ async def password_policy_error_handler(request: Request, exc: PasswordPolicyErr
     Returns:
         A `JSONResponse` with a 422 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -133,9 +137,10 @@ async def password_validation_error_handler(
     Returns:
         A `JSONResponse` with a 400 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -154,9 +159,10 @@ async def invalid_old_password_error_handler(
     Returns:
         A `JSONResponse` with a 400 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -173,9 +179,10 @@ async def password_reuse_error_handler(request: Request, exc: PasswordReuseError
     Returns:
         A `JSONResponse` with a 400 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -192,6 +199,7 @@ async def permission_error_handler(request: Request, exc: PermissionError) -> JS
     Returns:
         A `JSONResponse` with a 403 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     logger.warning(
         "Permission denied",
         error=exc.code,
@@ -200,7 +208,7 @@ async def permission_error_handler(request: Request, exc: PermissionError) -> JS
     )
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,
-        content={"detail": str(exc)},
+        content={"detail": get_translated_message(str(exc), locale)},
     )
 
 
@@ -220,7 +228,8 @@ async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded)
         A JSONResponse with status code 429.
 
     """
-    locale = get_request_language(request)
+    # Extract language from request for I18N
+    locale = extract_language_from_request(request)
     # The limit object has a 'limit' attribute which is a 'Limit' object.
     # The string representation of the 'Limit' object is the limit string (e.g. "10/minute").
     limit_scope = exc.limit.scope or "default"
@@ -250,7 +259,7 @@ async def rate_limit_exceeded_error_handler(request: Request, exc: RateLimitExce
     Returns:
         A `JSONResponse` with a 429 status code and error detail.
     """
-    locale = get_request_language(request)
+    locale = extract_language_from_request(request)
     logger.warning(
         "domain_rate_limit_exceeded",
         client_ip=request.client.host,
@@ -276,9 +285,10 @@ async def forgot_password_error_handler(request: Request, exc: ForgotPasswordErr
     Returns:
         A `JSONResponse` with a 400 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -295,9 +305,10 @@ async def password_reset_error_handler(request: Request, exc: PasswordResetError
     Returns:
         A `JSONResponse` with a 400 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -314,6 +325,7 @@ async def email_service_error_handler(request: Request, exc: EmailServiceError) 
     Returns:
         A `JSONResponse` with a 503 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     logger.error(
         "Email service interaction failed",
         error_message=str(exc),
@@ -322,7 +334,7 @@ async def email_service_error_handler(request: Request, exc: EmailServiceError) 
     )
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -339,9 +351,10 @@ async def user_not_found_error_handler(request: Request, exc: UserNotFoundError)
     Returns:
         A `JSONResponse` with a 404 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
-        content={"detail": exc.message},
+        content={"detail": get_translated_message(exc.message, locale)},
     )
 
 
@@ -358,6 +371,7 @@ async def cedrina_error_handler(request: Request, exc: CedrinaError) -> JSONResp
     Returns:
         A `JSONResponse` with a 500 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     logger.error(
         "An unhandled application error occurred",
         error_code=exc.code,
@@ -366,7 +380,7 @@ async def cedrina_error_handler(request: Request, exc: CedrinaError) -> JSONResp
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred."},
+        content={"detail": get_translated_message("unexpected_error", locale)},
     )
 
 
@@ -383,6 +397,7 @@ async def database_error_handler(request: Request, exc: DatabaseError) -> JSONRe
     Returns:
         A `JSONResponse` with a 500 status code and a generic error message.
     """
+    locale = extract_language_from_request(request)
     logger.critical(
         "A critical database error occurred",
         error_message=str(exc),
@@ -390,7 +405,7 @@ async def database_error_handler(request: Request, exc: DatabaseError) -> JSONRe
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "A database error occurred."},
+        content={"detail": get_translated_message("database_error", locale)},
     )
 
 
@@ -407,9 +422,30 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
     Returns:
         A `JSONResponse` with a 422 status code and error detail.
     """
+    locale = extract_language_from_request(request)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": str(exc)},
+        content={"detail": get_translated_message(str(exc), locale)},
+    )
+
+
+async def token_format_error_handler(request: Request, exc: TokenFormatError) -> JSONResponse:
+    """Handles `TokenFormatError`, returning a `422 Unprocessable Entity`.
+
+    This error occurs when a token format is invalid (e.g., wrong length,
+    invalid characters, malformed structure).
+
+    Args:
+        request: The incoming `Request` object.
+        exc: The `TokenFormatError` instance.
+
+    Returns:
+        A `JSONResponse` with a 422 status code and error detail.
+    """
+    locale = extract_language_from_request(request)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": get_translated_message(str(exc), locale)},
     )
 
 
@@ -425,6 +461,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The `FastAPI` application instance.
     """
     app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
+    app.add_exception_handler(RateLimitExceededError, rate_limit_exceeded_error_handler)
     app.add_exception_handler(AuthenticationError, authentication_error_handler)
     app.add_exception_handler(PermissionError, permission_error_handler)
     app.add_exception_handler(DuplicateUserError, duplicate_user_error_handler)
@@ -434,7 +471,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         PasswordValidationError, password_validation_error_handler
     )
-    app.add_exception_handler(RateLimitExceededError, rate_limit_exceeded_error_handler)
+    app.add_exception_handler(TokenFormatError, token_format_error_handler)
     app.add_exception_handler(ForgotPasswordError, forgot_password_error_handler)
     app.add_exception_handler(PasswordResetError, password_reset_error_handler)
     app.add_exception_handler(EmailServiceError, email_service_error_handler)

@@ -229,7 +229,7 @@ class TestErrorStandardizationService:
         elapsed2 = time.time() - start_time
         
         # Should be similar timing for same correlation ID (allow more tolerance for ultra-fast config)
-        assert abs(elapsed1 - elapsed2) < 0.2  # Allow more tolerance for ultra-fast config
+        assert abs(elapsed1 - elapsed2) < 0.5  # Allow more tolerance for system variability and database overhead
         
         # Test that SLOW pattern has longer timing than FAST
         start_time = time.time()

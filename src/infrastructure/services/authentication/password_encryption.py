@@ -22,17 +22,15 @@ import base64
 import secrets
 from typing import Optional
 
-import structlog
 from cryptography.fernet import Fernet, InvalidToken
 
 from src.core.config.settings import settings
-from src.core.exceptions import DecryptionError, EncryptionError
-from src.domain.interfaces import IPasswordEncryptionService
+from src.common.exceptions import DecryptionError, EncryptionError
+from src.common.security import IPasswordEncryptionService
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = structlog.get_logger(__name__)
 
-
-class PasswordEncryptionService(IPasswordEncryptionService):
+class PasswordEncryptionService(IPasswordEncryptionService, BaseInfrastructureService):
     """Domain service for password hash encryption using AES-256-GCM.
     
     This service implements defense-in-depth security by encrypting bcrypt password
@@ -64,9 +62,10 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             - Falls back to generated key if configuration is invalid
             - Key validation ensures proper format and length
         """
-        self._logger = logger.bind(
-            service="PasswordEncryptionService",
-            operation="initialization"
+        super().__init__(
+            service_name="PasswordEncryptionService",
+            encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256",
+            key_source="configured" if not encryption_key else "provided"
         )
         
         try:
@@ -80,16 +79,11 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             # Validate key format (Fernet requires 32 bytes base64-encoded)
             self._fernet = Fernet(key)
             
-            self._logger.info(
-                "Password encryption service initialized",
-                encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256",
-                key_source="configured" if not encryption_key else "provided"
-            )
-            
         except Exception as e:
             # Fall back to generated key if configuration is invalid
-            self._logger.warning(
-                "Invalid encryption key provided, falling back to generated key",
+            self._log_warning(
+                operation="initialization",
+                message="Invalid encryption key provided, falling back to generated key",
                 error=str(e),
                 environment="fallback"
             )
@@ -115,10 +109,7 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             - Constant-time operations
             - Secure error handling without information disclosure
         """
-        operation_logger = self._logger.bind(
-            operation="encrypt_password_hash",
-            input_format="bcrypt_hash"
-        )
+        operation = "encrypt_password_hash"
         
         try:
             # Validate bcrypt hash format for security
@@ -131,8 +122,8 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             encrypted_b64 = base64.b64encode(encrypted_bytes).decode('ascii')
             result = f"enc_v1:{encrypted_b64}"
             
-            operation_logger.debug(
-                "Password hash encrypted successfully",
+            self._log_success(
+                operation=operation,
                 output_length=len(result),
                 encryption_version="v1"
             )
@@ -140,21 +131,18 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             return result
             
         except ValueError as e:
-            operation_logger.warning(
-                "Invalid bcrypt hash format provided for encryption",
+            self._log_warning(
+                operation=operation,
+                message="Invalid bcrypt hash format provided for encryption",
                 error=str(e)
             )
             raise ValueError(f"Invalid bcrypt hash format: {e}") from e
             
         except Exception as e:
-            operation_logger.error(
-                "Password hash encryption failed",
-                error_type=type(e).__name__,
-                error_message=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation
             )
-            raise EncryptionError(
-                "Failed to encrypt password hash"
-            ) from e
     
     async def decrypt_password_hash(self, encrypted_hash: str) -> str:
         """Decrypt an encrypted password hash for verification.
@@ -175,10 +163,7 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             - Constant-time operations prevent timing attacks
             - Secure error handling without information disclosure
         """
-        operation_logger = self._logger.bind(
-            operation="decrypt_password_hash",
-            input_format="encrypted_hash"
-        )
+        operation = "decrypt_password_hash"
         
         try:
             # Validate encrypted hash format
@@ -200,23 +185,25 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             # Validate decrypted hash is valid bcrypt format
             self._validate_bcrypt_hash(bcrypt_hash)
             
-            operation_logger.debug(
-                "Password hash decrypted successfully",
+            self._log_success(
+                operation=operation,
                 output_format="bcrypt_hash"
             )
             
             return bcrypt_hash
             
         except ValueError as e:
-            operation_logger.warning(
-                "Invalid encrypted hash format provided for decryption",
+            self._log_warning(
+                operation=operation,
+                message="Invalid encrypted hash format provided for decryption",
                 error=str(e)
             )
             raise ValueError(f"Invalid encrypted hash format: {e}") from e
             
         except InvalidToken as e:
-            operation_logger.warning(
-                "Encrypted hash authentication failed during decryption",
+            self._log_warning(
+                operation=operation,
+                message="Encrypted hash authentication failed during decryption",
                 error="invalid_token"
             )
             raise DecryptionError(
@@ -224,14 +211,10 @@ class PasswordEncryptionService(IPasswordEncryptionService):
             ) from e
             
         except Exception as e:
-            operation_logger.error(
-                "Password hash decryption failed",
-                error_type=type(e).__name__,
-                error_message=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation
             )
-            raise DecryptionError(
-                "Failed to decrypt password hash"
-            ) from e
     
     def is_encrypted_format(self, value: str) -> bool:
         """Check if a value is in encrypted format.

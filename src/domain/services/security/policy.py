@@ -19,9 +19,9 @@ from typing import Any, Dict, List, Optional
 import sqlalchemy as sa
 from casbin import Enforcer
 
-from src.core.exceptions import PermissionError
+from src.common.exceptions import PermissionError
 from src.infrastructure.database.database import get_db_session
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 # Configure logging for policy management events
 logger = logging.getLogger(__name__)

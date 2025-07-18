@@ -6,7 +6,7 @@ logic for user password change operations.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only password change logic
-- Domain Value Objects: Uses Password value objects for validation
+- Domain Value Objects: Uses Password and SecurityContext value objects
 - Domain Events: Publishes PasswordChanged event
 - Ubiquitous Language: Method names reflect business concepts
 """
@@ -27,6 +27,7 @@ class IPasswordChangeService(ABC):
     - Domain Value Objects: Uses Password value objects for validation
     - Domain Events: Publishes PasswordChanged event
     - Ubiquitous Language: Method names reflect business concepts
+    - Fail-Safe Security: Implements secure password validation and audit trails
     """
 
     @abstractmethod
@@ -42,19 +43,28 @@ class IPasswordChangeService(ABC):
     ) -> None:
         """Changes a user's password after verifying their current one.
 
+        This method ensures secure password change by:
+        1. Validating the user exists and is active
+        2. Verifying the old password is correct
+        3. Validating the new password meets policy requirements
+        4. Securely updating the password hash
+        5. Publishing PasswordChanged domain event
+        6. Recording security context for audit trails
+
         Args:
             user_id: The ID of the user changing their password.
             old_password: The user's current password for verification.
             new_password: The desired new password.
             language: The language for error messages (i18n).
-            client_ip: The IP address of the client for auditing.
-            user_agent: The user agent of the client for auditing.
-            correlation_id: A unique ID for tracing the request.
+            client_ip: Client IP address for audit trails.
+            user_agent: User agent string for audit trails.
+            correlation_id: Correlation ID for request tracking.
 
         Raises:
-            UserNotFoundError: If the user_id does not correspond to an existing user.
+            AuthenticationError: If the user_id does not correspond to an existing user.
             InvalidOldPasswordError: If the provided `old_password` is incorrect.
             PasswordReuseError: If the `new_password` is the same as the old one.
             PasswordPolicyError: If the `new_password` does not meet policy requirements.
+            ValueError: If input parameters are invalid.
         """
         raise NotImplementedError 

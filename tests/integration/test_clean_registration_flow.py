@@ -24,7 +24,7 @@ from src.domain.services.authentication.error_classification_service import (
     EmailValidationStrategy,
     GenericValidationStrategy,
 )
-from src.core.exceptions import (
+from src.common.exceptions import (
     PasswordPolicyError,
     ValidationError,
     AuthenticationError,

@@ -8,17 +8,15 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-import structlog
-
-from src.core.exceptions import RateLimitExceededError
+from src.common.exceptions import RateLimitExceededError
 from src.domain.entities.user import User
 from src.domain.interfaces import IPasswordResetTokenService, IRateLimitingService
 from src.domain.value_objects.reset_token import ResetToken
+from src.domain.value_objects.security_context import SecurityContext
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = structlog.get_logger(__name__)
 
-
-class PasswordResetTokenService(IPasswordResetTokenService):
+class PasswordResetTokenService(IPasswordResetTokenService, BaseInfrastructureService):
     """Infrastructure implementation of password reset token service with enhanced security.
     
     This service handles token generation, validation, and lifecycle management
@@ -45,14 +43,14 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             token_expiry_minutes: Token expiration time in minutes
             rate_limiting_service: Rate limiting service for abuse prevention
         """
-        self._token_expiry_minutes = token_expiry_minutes
-        self._rate_limiting_service = rate_limiting_service
-        
-        logger.info(
-            "PasswordResetTokenService initialized with enhanced security",
+        super().__init__(
+            service_name="PasswordResetTokenService",
             token_expiry_minutes=token_expiry_minutes,
             rate_limiting_enabled=rate_limiting_service is not None
         )
+        
+        self._token_expiry_minutes = token_expiry_minutes
+        self._rate_limiting_service = rate_limiting_service
     
     async def generate_token(self, user: User) -> ResetToken:
         """Generate a new password reset token for the user with rate limiting.
@@ -72,13 +70,15 @@ class PasswordResetTokenService(IPasswordResetTokenService):
         Raises:
             RateLimitExceededError: If rate limit is exceeded for this email
         """
+        operation = "generate_token"
+        
         try:
             # Check rate limiting if service is available
             if self._rate_limiting_service:
                 await self._check_rate_limit(user)
             
             # Log token generation (with user ID only for security)
-            logger.info(
+            self._log_operation(operation).info(
                 "Generating enhanced password reset token",
                 user_id=user.id,
                 username=user.username,
@@ -87,8 +87,9 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             
             # Check if user already has an active token
             if self._has_active_token(user):
-                logger.info(
-                    "Replacing existing token for user",
+                self._log_warning(
+                    operation=operation,
+                    message="Replacing existing token for user",
                     user_id=user.id,
                     previous_token_prefix=user.password_reset_token[:8] if user.password_reset_token else None
                 )
@@ -107,8 +108,8 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             if self._rate_limiting_service:
                 await self._rate_limiting_service.record_attempt(user.id)
             
-            logger.info(
-                "Enhanced password reset token generated successfully",
+            self._log_success(
+                operation=operation,
                 user_id=user.id,
                 token_prefix=token.value[:8],
                 expires_at=token.expires_at.isoformat(),
@@ -122,12 +123,11 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             # Re-raise rate limit errors
             raise
         except Exception as e:
-            logger.error(
-                "Failed to generate enhanced password reset token",
-                user_id=user.id,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            raise
     
     async def _check_rate_limit(self, user: User) -> None:
         """Check rate limit for user before generating token.
@@ -147,8 +147,9 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             if is_limited:
                 reset_time = await self._rate_limiting_service.get_time_until_reset(user.id)
                 
-                logger.warning(
-                    "Rate limit exceeded for password reset token generation",
+                self._log_warning(
+                    operation="check_rate_limit",
+                    message="Rate limit exceeded for password reset token generation",
                     user_id=user.id,
                     reset_time=reset_time.isoformat() if reset_time else None
                 )
@@ -161,8 +162,9 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             # Re-raise rate limit errors
             raise
         except Exception as e:
-            logger.error(
-                "Error checking rate limit for token generation",
+            self._log_warning(
+                operation="check_rate_limit",
+                message="Error checking rate limit for token generation",
                 user_id=user.id,
                 error=str(e)
             )
@@ -179,25 +181,24 @@ class PasswordResetTokenService(IPasswordResetTokenService):
         Returns:
             bool: True if token is valid and not expired
         """
+        operation = "validate_token"
+        
         try:
-            # Check if user has a token
-            if not self._has_active_token(user):
-                logger.warning(
-                    "Token validation failed - no active token",
+            # Create token value object from stored data
+            stored_token = self._create_token_from_user(user)
+            if not stored_token:
+                self._log_warning(
+                    operation=operation,
+                    message="Token validation failed - no active token",
                     user_id=user.id
                 )
                 return False
             
-            # Create token value object from stored data
-            stored_token = ResetToken.from_existing(
-                user.password_reset_token,
-                user.password_reset_token_expires_at
-            )
-            
             # Check expiration first
             if stored_token.is_expired():
-                logger.warning(
-                    "Token validation failed - token expired",
+                self._log_warning(
+                    operation=operation,
+                    message="Token validation failed - token expired",
                     user_id=user.id,
                     stored_token_prefix=stored_token.value[:8],
                     expires_at=stored_token.expires_at.isoformat()
@@ -208,8 +209,8 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             is_valid = secrets.compare_digest(stored_token.value, token)
             
             # Log validation result (with token prefix only)
-            logger.info(
-                "Enhanced token validation completed",
+            self._log_success(
+                operation=operation,
                 user_id=user.id,
                 is_valid=is_valid,
                 stored_token_prefix=stored_token.value[:8],
@@ -220,12 +221,11 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             return is_valid
             
         except Exception as e:
-            logger.error(
-                "Error during enhanced token validation",
-                user_id=user.id,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            return False
     
     def is_token_valid(self, user: User, token: str) -> bool:
         """Alias for validate_token for backward compatibility."""
@@ -238,10 +238,12 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             user: User entity to invalidate token for
             reason: Reason for invalidation (for logging)
         """
+        operation = "invalidate_token"
+        
         try:
             if self._has_active_token(user):
-                logger.info(
-                    "Invalidating enhanced password reset token",
+                self._log_success(
+                    operation=operation,
                     user_id=user.id,
                     reason=reason,
                     token_prefix=user.password_reset_token[:8] if user.password_reset_token else None
@@ -250,26 +252,20 @@ class PasswordResetTokenService(IPasswordResetTokenService):
                 user.password_reset_token = None
                 user.password_reset_token_expires_at = None
                 
-                logger.info(
-                    "Enhanced password reset token invalidated successfully",
-                    user_id=user.id,
-                    reason=reason
-                )
             else:
-                logger.debug(
-                    "Token invalidation skipped - no active token",
+                self._log_warning(
+                    operation=operation,
+                    message="Token invalidation skipped - no active token",
                     user_id=user.id,
                     reason=reason
                 )
                 
         except Exception as e:
-            logger.error(
-                "Error invalidating enhanced token",
-                user_id=user.id,
-                reason=reason,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            raise
     
     def is_token_expired(self, user: User) -> bool:
         """Check if the user's token is expired.
@@ -280,20 +276,18 @@ class PasswordResetTokenService(IPasswordResetTokenService):
         Returns:
             bool: True if token is expired or doesn't exist
         """
+        operation = "is_token_expired"
+        
         try:
-            if not self._has_active_token(user):
+            stored_token = self._create_token_from_user(user)
+            if not stored_token:
                 return True
-            
-            stored_token = ResetToken.from_existing(
-                user.password_reset_token,
-                user.password_reset_token_expires_at
-            )
             
             is_expired = stored_token.is_expired()
             
             if is_expired:
-                logger.info(
-                    "Enhanced token expired",
+                self._log_success(
+                    operation=operation,
                     user_id=user.id,
                     token_prefix=stored_token.value[:8],
                     expires_at=stored_token.expires_at.isoformat()
@@ -302,12 +296,11 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             return is_expired
             
         except Exception as e:
-            logger.error(
-                "Error checking enhanced token expiration",
-                user_id=user.id,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            return True  # Fail safe - consider expired if we can't determine
     
     def get_token_expiry(self, user: User) -> Optional[datetime]:
         """Get the expiry time of the user's token.
@@ -316,69 +309,74 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             user: User entity to check
             
         Returns:
-            Optional[datetime]: Expiry time if token exists, None otherwise
+            Optional[datetime]: Token expiry time if exists and valid
         """
-        if not self._has_active_token(user):
-            return None
+        operation = "get_token_expiry"
         
-        return user.password_reset_token_expires_at
-    
-    def get_time_remaining(self, user: User) -> Optional[int]:
-        """Get seconds remaining before token expires.
-        
-        Args:
-            user: User entity to check
-            
-        Returns:
-            Optional[int]: Seconds remaining, or None if no token
-        """
         try:
-            if not self._has_active_token(user):
+            stored_token = self._create_token_from_user(user)
+            if not stored_token:
                 return None
             
-            stored_token = ResetToken.from_existing(
-                user.password_reset_token,
-                user.password_reset_token_expires_at
-            )
-            
-            remaining = stored_token.time_remaining()
-            return int(remaining.total_seconds()) if remaining and remaining.total_seconds() > 0 else None
+            return stored_token.expires_at
             
         except Exception as e:
-            logger.error(
-                "Error calculating time remaining for enhanced token",
-                user_id=user.id,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            return None
     
-    def get_token_security_metrics(self, user: User) -> Optional[dict]:
-        """Get security metrics for the user's token (for monitoring).
+    def get_time_remaining(self, user: User) -> Optional[int]:
+        """Get remaining time until token expires in seconds.
         
         Args:
             user: User entity to check
             
         Returns:
-            Optional[dict]: Security metrics if token exists, None otherwise
+            Optional[int]: Remaining seconds if token exists and valid, None otherwise
         """
+        operation = "get_time_remaining"
+        
         try:
-            if not self._has_active_token(user):
+            stored_token = self._create_token_from_user(user)
+            if not stored_token:
                 return None
             
-            stored_token = ResetToken.from_existing(
-                user.password_reset_token,
-                user.password_reset_token_expires_at
+            remaining_time = stored_token.time_remaining()
+            return int(remaining_time.total_seconds()) if remaining_time.total_seconds() > 0 else None
+            
+        except Exception as e:
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
+    
+    def get_token_security_metrics(self, user: User) -> Optional[dict]:
+        """Get security metrics for the user's token.
+        
+        Args:
+            user: User entity to check
+            
+        Returns:
+            Optional[dict]: Security metrics if token exists and valid
+        """
+        operation = "get_token_security_metrics"
+        
+        try:
+            stored_token = self._create_token_from_user(user)
+            if not stored_token:
+                return None
             
             return stored_token.get_security_metrics()
             
         except Exception as e:
-            logger.error(
-                "Error getting token security metrics",
-                user_id=user.id,
-                error=str(e)
+            raise self._handle_infrastructure_error(
+                error=e,
+                operation=operation,
+                user_id=user.id
             )
-            return None
     
     def _has_active_token(self, user: User) -> bool:
         """Check if user has an active token.
@@ -393,3 +391,25 @@ class PasswordResetTokenService(IPasswordResetTokenService):
             user.password_reset_token is not None
             and user.password_reset_token_expires_at is not None
         )
+
+    def _create_token_from_user(self, user: User) -> Optional[ResetToken]:
+        """Create ResetToken from user's stored token data.
+        
+        Args:
+            user: User entity with stored token data
+            
+        Returns:
+            ResetToken if user has valid token data, None otherwise
+        """
+        if not self._has_active_token(user):
+            return None
+        
+        try:
+            return ResetToken.from_existing(
+                user.password_reset_token,
+                user.password_reset_token_expires_at
+            )
+        except ValueError:
+            # Invalid token data - clear it
+            self.invalidate_token(user, reason="invalid_token_data")
+            return None

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from src.core.config.settings import settings
 from src.core.logging import configure_logging
-from src.utils.i18n import setup_i18n
+from src.common.i18n import setup_i18n
 
 
 def initialize_application() -> None:
@@ -26,4 +26,4 @@ def initialize_application() -> None:
     configure_logging(log_level=settings.LOG_LEVEL, json_logs=settings.LOG_JSON)
 
     # Setup i18n
-    setup_i18n() 
+    setup_i18n('./locales', settings.SUPPORTED_LANGUAGES, 'en') 

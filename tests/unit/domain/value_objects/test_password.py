@@ -7,6 +7,7 @@ business rules and security requirements following TDD principles.
 import pytest
 from unittest.mock import patch
 from src.domain.value_objects.password import Password, HashedPassword
+from src.common.exceptions import PasswordPolicyError
 
 
 class TestPassword:
@@ -38,7 +39,7 @@ class TestPassword:
         short_password = "Ab1!"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must be at least 8 characters long"):
+        with pytest.raises(PasswordPolicyError, match="Password must be at least 8 characters long"):
             Password(value=short_password)
     
     def test_password_too_long(self):
@@ -47,7 +48,7 @@ class TestPassword:
         long_password = "A" * 129 + "b1!"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must not exceed 128 characters"):
+        with pytest.raises(PasswordPolicyError, match="Password must be no more than 128 characters long"):
             Password(value=long_password)
     
     def test_password_missing_uppercase(self):
@@ -56,7 +57,7 @@ class TestPassword:
         no_upper = "mystr0ng#p@ssw0rd"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must contain at least one uppercase letter"):
+        with pytest.raises(PasswordPolicyError, match="Password must contain at least one uppercase letter"):
             Password(value=no_upper)
     
     def test_password_missing_lowercase(self):
@@ -65,7 +66,7 @@ class TestPassword:
         no_lower = "MYSTR0NG#P@SSW0RD"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must contain at least one lowercase letter"):
+        with pytest.raises(PasswordPolicyError, match="Password must contain at least one lowercase letter"):
             Password(value=no_lower)
     
     def test_password_missing_digit(self):
@@ -74,7 +75,7 @@ class TestPassword:
         no_digit = "MyStrOng#P@sswOrd"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must contain at least one digit"):
+        with pytest.raises(PasswordPolicyError, match="Password must contain at least one digit"):
             Password(value=no_digit)
     
     def test_password_missing_special_character(self):
@@ -83,13 +84,13 @@ class TestPassword:
         no_special = "MyStr0ngPassw0rd"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password must contain at least one special character"):
+        with pytest.raises(PasswordPolicyError, match="Password must contain at least one special character"):
             Password(value=no_special)
     
     def test_password_empty(self):
         """Test empty password validation."""
         # Act & Assert
-        with pytest.raises(ValueError, match="Password cannot be empty"):
+        with pytest.raises(PasswordPolicyError, match="Password cannot be empty"):
             Password(value="")
     
     def test_password_weak_patterns_consecutive_chars(self):
@@ -98,7 +99,7 @@ class TestPassword:
         weak_password = "MyStr0ng#AAA"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password contains common weak patterns"):
+        with pytest.raises(PasswordPolicyError, match="Password does not meet security requirements"):
             Password(value=weak_password)
     
     def test_password_weak_patterns_sequential_numbers(self):
@@ -107,7 +108,7 @@ class TestPassword:
         weak_password = "MyStr0ng#123"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password contains common weak patterns"):
+        with pytest.raises(PasswordPolicyError, match="Password does not meet security requirements"):
             Password(value=weak_password)
     
     def test_password_weak_patterns_sequential_letters(self):
@@ -116,7 +117,7 @@ class TestPassword:
         weak_password = "MyStr0ng#abc"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password contains common weak patterns"):
+        with pytest.raises(PasswordPolicyError, match="Password does not meet security requirements"):
             Password(value=weak_password)
     
     def test_password_weak_patterns_common_words(self):
@@ -125,7 +126,7 @@ class TestPassword:
         weak_password = "AdminStr0ng#1"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Password contains common weak patterns"):
+        with pytest.raises(PasswordPolicyError, match="Password does not meet security requirements"):
             Password(value=weak_password)
     
     def test_password_to_hashed(self):
@@ -302,7 +303,7 @@ class TestHashedPassword:
         invalid_hash = "$2b$12$short"
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Invalid hashed password length"):
+        with pytest.raises(ValueError, match="Invalid hashed password format"):
             HashedPassword(value=invalid_hash)
     
     def test_from_plain_password(self):

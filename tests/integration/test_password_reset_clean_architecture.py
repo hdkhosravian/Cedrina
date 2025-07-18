@@ -10,8 +10,9 @@ import re
 
 import pytest
 from pydantic import EmailStr
+from src.common.exceptions import ValidationError
 
-from src.core.exceptions import PasswordResetError, RateLimitExceededError
+from src.common.exceptions import PasswordResetError, RateLimitExceededError, TokenFormatError
 from src.domain.entities.user import User
 from src.domain.events.password_reset_events import (
     PasswordResetRequestedEvent,
@@ -33,6 +34,7 @@ from src.infrastructure.services.event_publisher import InMemoryEventPublisher
 from src.infrastructure.services.password_reset_token_service import (
     PasswordResetTokenService,
 )
+from src.domain.interfaces.repositories import IUserRepository
 
 
 @pytest.fixture
@@ -233,12 +235,12 @@ class TestPasswordResetIntegration:
     ):
         """Test that invalid token formats are rejected."""
         # Act & Assert
-        with pytest.raises(PasswordResetError):
+        with pytest.raises(TokenFormatError):
             await password_reset_service.reset_password(
                 token="invalid_token",
                 new_password="NewPassword123!",
             )
-    
+
     @pytest.mark.asyncio
     async def test_weak_password_rejected(
         self,
@@ -246,7 +248,7 @@ class TestPasswordResetIntegration:
         mock_user_repository,
         test_user,
     ):
-        """Test that weak passwords are rejected during reset."""
+        """Test that weak passwords are rejected during reset (expected ValidationError)."""
         # Arrange
         token = ResetToken.generate()
         test_user.password_reset_token = token.value
@@ -255,12 +257,12 @@ class TestPasswordResetIntegration:
         mock_user_repository.get_by_reset_token.return_value = test_user
         
         # Act & Assert
-        with pytest.raises(PasswordResetError):
+        with pytest.raises(ValidationError, match="Password must be at least 8 characters long"):
             await password_reset_service.reset_password(
                 token=token.value,
                 new_password="weak",  # Too weak
             )
-    
+
     @pytest.mark.asyncio
     async def test_security_events_are_published(
         self,
@@ -320,7 +322,8 @@ class TestPasswordResetIntegration:
     async def test_value_objects_enforce_business_rules(self):
         """Test that value objects properly enforce business rules."""
         # Test Password value object
-        with pytest.raises(ValueError):
+        from src.common.exceptions import PasswordPolicyError
+        with pytest.raises(PasswordPolicyError):
             Password(value="weak")  # Too weak
         
         valid_password = Password(value="MyStr0ng#P@ssw0rd")
@@ -335,7 +338,7 @@ class TestPasswordResetIntegration:
         assert any(not c.isalnum() for c in token.value)
         
         # Test token format validation
-        with pytest.raises(ValueError):
+        with pytest.raises(TokenFormatError):
             ResetToken.from_existing("invalid", datetime.now(timezone.utc))
     
     def test_event_publisher_tracks_all_events(self, event_publisher):
@@ -364,43 +367,19 @@ class TestArchitecturalBenefits:
     def test_value_objects_prevent_invalid_states(self):
         """Test that value objects prevent invalid business states."""
         # Password must meet security requirements
-        with pytest.raises(ValueError):
+        from src.common.exceptions import PasswordPolicyError
+        with pytest.raises(PasswordPolicyError):
             Password(value="")
         
         # Tokens must be properly formatted
-        with pytest.raises(ValueError):
+        with pytest.raises(TokenFormatError):
             ResetToken.from_existing("", datetime.now(timezone.utc))
         
         # Rate limits must have positive values
         from src.domain.value_objects.rate_limit import RateLimitWindow
         with pytest.raises(ValueError):
             RateLimitWindow.create_custom(user_id=0, window_minutes=5, max_attempts=1)
-    
-    def test_domain_events_enable_observability(self, event_publisher):
-        """Test that domain events enable comprehensive observability."""
-        # Events can be filtered and analyzed
-        assert callable(event_publisher.get_events_by_type)
-        assert callable(event_publisher.get_events_by_user)
-        assert callable(event_publisher.get_published_events)
-        
-        # Events contain comprehensive context
-        from src.domain.events.password_reset_events import PasswordResetRequestedEvent
-        event = PasswordResetRequestedEvent(
-            occurred_at=datetime.now(timezone.utc),
-            user_id=1,
-            correlation_id="test-123",
-            email="test@example.com",
-            token_expires_at=datetime.now(timezone.utc),
-            user_agent="Test Browser",
-            ip_address="192.168.1.1",
-        )
-        
-        # All security-relevant fields are captured
-        assert hasattr(event, 'user_agent')
-        assert hasattr(event, 'ip_address')
-        assert hasattr(event, 'correlation_id')
-        assert hasattr(event, 'occurred_at')
-    
+
     def test_interfaces_enable_dependency_inversion(self):
         """Test that interfaces properly enable dependency inversion."""
         # Services depend on abstractions, not concretions

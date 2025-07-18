@@ -19,7 +19,7 @@ Infrastructure Domain Services:
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from src.domain.events.password_reset_events import BaseDomainEvent
+from src.domain.events.base_events import BaseDomainEvent
 
 
 class IEventPublisher(ABC):

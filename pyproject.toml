@@ -37,6 +37,7 @@ slowapi = "^0.1.9"
 casbin-sqlalchemy-adapter = "^0.1.0"
 fastapi-mail = "^1.4.1"
 jinja2 = "^3.1.4"
+bcrypt = "^4.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
@@ -106,7 +107,6 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning",
     "ignore::UserWarning",
     "ignore::RuntimeWarning",
-    "ignore::pytest.PytestRemovedIn9Warning",
     "ignore::sqlalchemy.exc.MovedIn20Warning"
 ]
 markers = [

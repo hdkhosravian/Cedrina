@@ -6,7 +6,7 @@ logic for user authentication operations.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only user authentication logic
-- Domain Value Objects: Uses Username and LoginPassword value objects
+- Domain Value Objects: Uses Username, LoginPassword, and SecurityContext value objects
 - Domain Events: Publishes authentication events for audit trails
 - Ubiquitous Language: Method names reflect business concepts
 """
@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from src.domain.entities.user import User
 from src.domain.value_objects.password import LoginPassword, Password
 from src.domain.value_objects.username import Username
+from src.domain.value_objects.security_context import SecurityContext
 
 
 class IUserAuthenticationService(ABC):
@@ -29,9 +30,10 @@ class IUserAuthenticationService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only authentication logic
-    - Domain Value Objects: Uses Username and LoginPassword value objects
+    - Domain Value Objects: Uses Username, LoginPassword, and SecurityContext value objects
     - Domain Events: Publishes authentication events for audit trails
     - Ubiquitous Language: Method names reflect business concepts
+    - Fail-Safe Security: Implements secure credential validation and audit trails
     """
 
     @abstractmethod
@@ -39,10 +41,8 @@ class IUserAuthenticationService(ABC):
         self,
         username: Username,
         password: LoginPassword,
-        language: str = "en",
-        client_ip: str = "",
-        user_agent: str = "",
-        correlation_id: str = "",
+        security_context: SecurityContext,
+        language: str = "en"
     ) -> User:
         """Authenticates a user with their username and password.
 
@@ -51,14 +51,13 @@ class IUserAuthenticationService(ABC):
         2. Verifying their password against the stored hash.
         3. Checking if the user's account is active.
         4. Publishing relevant domain events for the authentication attempt.
+        5. Recording security context for audit trails.
 
         Args:
             username: The validated and normalized `Username` value object.
             password: The validated `LoginPassword` value object (minimal validation).
+            security_context: Validated security context for audit trails. (Required)
             language: The language for error messages (i18n).
-            client_ip: The IP address of the client for auditing.
-            user_agent: The user agent of the client for auditing.
-            correlation_id: A unique ID for tracing the request.
 
         Returns:
             The authenticated `User` entity if successful.
@@ -66,6 +65,7 @@ class IUserAuthenticationService(ABC):
         Raises:
             AuthenticationError: If the credentials are invalid, the user is
                 not found, or the account is inactive.
+            ValidationError: If security context is invalid.
         """
         raise NotImplementedError
 

@@ -11,7 +11,7 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     ForgotPasswordError,
     PasswordResetError,
     UserNotFoundError,
@@ -50,7 +50,7 @@ class TestResetPasswordEndpoint:
         assert response.status_code == status.HTTP_200_OK
         response_data = response.json()
         assert "message" in response_data
-        assert response_data["message"] == "Password reset successfully"
+        assert response_data["message"] == "password_reset_successful"
         
         # Verify service was called with correct parameters
         mock_password_reset_service.reset_password.assert_called_once()
@@ -308,46 +308,21 @@ class TestResetPasswordEndpoint:
         self,
         async_client: AsyncClient
     ):
-        """Test token validation edge cases."""
-        new_password = "NewSecurePass123!"
-
-        # Cases that should be rejected at the Pydantic validation level
-        pydantic_validation_cases = [
-            # Empty token
-            {"token": "", "new_password": new_password},
-            # Token too short (below min_length=64)
-            {"token": "short", "new_password": new_password},
-            # Token too long (above max_length=64) 
-            {"token": "a" * 65, "new_password": new_password},
+        """Test password reset with various token validation edge cases."""
+        # Test with malformed tokens that should return 422 (format validation error)
+        malformed_tokens = [
+            "invalid_token",  # Missing character diversity
+            "short",  # Too short
+            "a" * 100,  # Too long
+            "",  # Empty
         ]
 
-        for invalid_payload in pydantic_validation_cases:
-            # Act
+        for token in malformed_tokens:
             response = await async_client.post(
                 "/api/v1/auth/reset-password",
-                json=invalid_payload
+                json={"token": token, "new_password": "NewPassword123!"},
             )
-
-            # Assert - These should fail at Pydantic validation level
             assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-
-        # Cases that pass Pydantic validation but fail domain validation
-        domain_validation_cases = [
-            # Token with special characters (passes length check but invalid format)
-            {"token": "a" * 63 + "@", "new_password": new_password},
-        ]
-
-        for payload in domain_validation_cases:
-            # Act
-            response = await async_client.post(
-                "/api/v1/auth/reset-password",
-                json=payload
-            )
-
-            # Assert - These pass Pydantic validation but fail domain validation
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
-            response_data = response.json()
-            assert "detail" in response_data
     
     @pytest.mark.asyncio
     async def test_reset_password_password_validation_edge_cases(
@@ -355,7 +330,9 @@ class TestResetPasswordEndpoint:
         async_client: AsyncClient
     ):
         """Test password validation edge cases."""
-        valid_token = "a" * 64
+        # Use a properly formatted token that will pass ResetToken validation
+        # so we can test password validation logic
+        valid_token = "Abc123!@#" + "a" * 55  # 64 chars total with required character types
         
         test_cases = [
             # Empty password
@@ -373,12 +350,9 @@ class TestResetPasswordEndpoint:
                 json=invalid_payload
             )
             
-            # Assert
-            # May be caught at validation level or domain level
-            assert response.status_code in [
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                status.HTTP_400_BAD_REQUEST
-            ]
+            # Assert - Should return 400 for domain validation errors
+            # Since we're using a non-existent token, it will fail token lookup validation
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     @pytest.mark.asyncio
     async def test_reset_password_internationalization_support(

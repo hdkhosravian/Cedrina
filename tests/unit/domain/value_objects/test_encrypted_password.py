@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from src.core.exceptions import DecryptionError, EncryptionError
+from src.common.exceptions import DecryptionError, EncryptionError
 from src.domain.value_objects.password import (
     Password, 
     HashedPassword, 
@@ -156,7 +156,7 @@ class TestEncryptedPassword:
         """Test creating EncryptedPassword from unencrypted HashedPassword."""
         # Setup mock
         encrypted_result = "enc_v1:encrypted_data"
-        mock_encryption_service.encrypt_password_hash.return_value = encrypted_result
+        mock_encryption_service.encrypt.return_value = encrypted_result
         
         hashed = HashedPassword.from_hash(valid_bcrypt_hash)
         
@@ -164,7 +164,7 @@ class TestEncryptedPassword:
         encrypted = await EncryptedPassword.from_hashed_password(hashed, mock_encryption_service)
         
         assert encrypted.encrypted_value == encrypted_result
-        mock_encryption_service.encrypt_password_hash.assert_called_once_with(valid_bcrypt_hash)
+        mock_encryption_service.encrypt.assert_called_once_with(valid_bcrypt_hash)
 
     @pytest.mark.asyncio
     async def test_from_hashed_password_with_already_encrypted_hash(
@@ -178,14 +178,14 @@ class TestEncryptedPassword:
         encrypted = await EncryptedPassword.from_hashed_password(hashed, mock_encryption_service)
         
         assert encrypted.encrypted_value == encrypted_hash_value
-        mock_encryption_service.encrypt_password_hash.assert_not_called()
+        mock_encryption_service.encrypt.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_from_hashed_password_handles_encryption_error(
         self, valid_bcrypt_hash, mock_encryption_service
     ):
         """Test from_hashed_password handles encryption errors."""
-        mock_encryption_service.encrypt_password_hash.side_effect = EncryptionError("Encryption failed")
+        mock_encryption_service.encrypt.side_effect = EncryptionError("Encryption failed")
         
         hashed = HashedPassword.from_hash(valid_bcrypt_hash)
         
@@ -196,20 +196,20 @@ class TestEncryptedPassword:
     async def test_to_bcrypt_hash_success(self, valid_encrypted_value, mock_encryption_service):
         """Test successful decryption to bcrypt hash."""
         decrypted_hash = "$2b$12$Fg6iizuEs1Du8vy1pxiyk.9s1.3u3zAxo8TjLN7vqAQL9nUHzgM9i"
-        mock_encryption_service.decrypt_password_hash.return_value = decrypted_hash
+        mock_encryption_service.decrypt.return_value = decrypted_hash
         
         encrypted = EncryptedPassword(encrypted_value=valid_encrypted_value)
         result = await encrypted.to_bcrypt_hash(mock_encryption_service)
         
         assert result == decrypted_hash
-        mock_encryption_service.decrypt_password_hash.assert_called_once_with(valid_encrypted_value)
+        mock_encryption_service.decrypt.assert_called_once_with(valid_encrypted_value)
 
     @pytest.mark.asyncio
     async def test_to_bcrypt_hash_handles_decryption_error(
         self, valid_encrypted_value, mock_encryption_service
     ):
         """Test to_bcrypt_hash handles decryption errors."""
-        mock_encryption_service.decrypt_password_hash.side_effect = DecryptionError("Decryption failed")
+        mock_encryption_service.decrypt.side_effect = DecryptionError("Decryption failed")
         
         encrypted = EncryptedPassword(encrypted_value=valid_encrypted_value)
         
@@ -254,7 +254,7 @@ class TestPasswordValueObjectsIntegration:
         """Test complete flow from Password to EncryptedPassword."""
         # Setup mock
         encrypted_result = "enc_v1:encrypted_bcrypt_hash"
-        mock_encryption_service.encrypt_password_hash.return_value = encrypted_result
+        mock_encryption_service.encrypt.return_value = encrypted_result
         
         # Create password and hash it
         password = Password("Rx7!mQ8$vZ2@")
@@ -264,7 +264,7 @@ class TestPasswordValueObjectsIntegration:
         encrypted = await EncryptedPassword.from_hashed_password(hashed, mock_encryption_service)
         
         assert encrypted.encrypted_value == encrypted_result
-        mock_encryption_service.encrypt_password_hash.assert_called_once()
+        mock_encryption_service.encrypt.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_encrypted_password_round_trip(self, mock_encryption_service):
@@ -273,8 +273,8 @@ class TestPasswordValueObjectsIntegration:
         encrypted_value = "enc_v1:encrypted_data"
         
         # Setup mocks
-        mock_encryption_service.encrypt_password_hash.return_value = encrypted_value
-        mock_encryption_service.decrypt_password_hash.return_value = original_bcrypt
+        mock_encryption_service.encrypt.return_value = encrypted_value
+        mock_encryption_service.decrypt.return_value = original_bcrypt
         
         # Create hashed password and encrypt it
         hashed = HashedPassword.from_hash(original_bcrypt)
@@ -301,7 +301,7 @@ class TestPasswordValueObjectsIntegration:
     async def test_error_propagation_through_value_objects(self, mock_encryption_service):
         """Test error propagation through value object operations."""
         # Test encryption error propagation
-        mock_encryption_service.encrypt_password_hash.side_effect = EncryptionError("Encryption failed")
+        mock_encryption_service.encrypt.side_effect = EncryptionError("Encryption failed")
         
         hashed = HashedPassword.from_hash("$2b$12$Fg6iizuEs1Du8vy1pxiyk.9s1.3u3zAxo8TjLN7vqAQL9nUHzgM9i")
         
@@ -309,7 +309,7 @@ class TestPasswordValueObjectsIntegration:
             await EncryptedPassword.from_hashed_password(hashed, mock_encryption_service)
         
         # Test decryption error propagation
-        mock_encryption_service.decrypt_password_hash.side_effect = DecryptionError("Decryption failed")
+        mock_encryption_service.decrypt.side_effect = DecryptionError("Decryption failed")
         
         encrypted = EncryptedPassword(encrypted_value="enc_v1:test_data")
         

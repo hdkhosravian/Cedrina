@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     EmailServiceError,
     ForgotPasswordError,
     RateLimitExceededError,

@@ -10,7 +10,7 @@ from typing import Dict, Optional
 import structlog
 from pydantic import EmailStr
 
-from src.core.exceptions import (
+from src.common.exceptions import (
     EmailServiceError,
     ForgotPasswordError,
     RateLimitExceededError,
@@ -29,7 +29,7 @@ from src.domain.interfaces import (
     IRateLimitingService,
 )
 from src.domain.value_objects.reset_token import ResetToken
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -111,6 +111,10 @@ class PasswordResetRequestService:
             - Comprehensive audit logging via domain events
             - Secure token generation with proper entropy
         """
+        # Initialize variables for exception handling
+        user = None
+        token = None
+        
         try:
             logger.info(
                 "Processing password reset request",
@@ -314,7 +318,6 @@ class PasswordResetRequestService:
             correlation_id: Correlation ID
         """
         event = PasswordResetRequestedEvent(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user.id,
             correlation_id=correlation_id,
             email=email,
@@ -346,7 +349,6 @@ class PasswordResetRequestService:
             correlation_id: Correlation ID
         """
         event = PasswordResetFailedEvent(
-            occurred_at=datetime.now(timezone.utc),
             user_id=user.id,
             correlation_id=correlation_id,
             email=email,

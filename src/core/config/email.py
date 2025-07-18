@@ -118,9 +118,11 @@ class EmailSettings(BaseSettings):
         Raises:
             ValueError: If SMTP configuration is invalid or insecure
         """
-        if not self.SMTP_USERNAME or not self.SMTP_PASSWORD:
+        # Only require SMTP credentials for production and staging environments
+        # Allow development and test environments to skip SMTP configuration
+        if self.SMTP_HOST != "localhost" and (not self.SMTP_USERNAME or not self.SMTP_PASSWORD):
             raise ValueError(
-                "SMTP_USERNAME and SMTP_PASSWORD are required"
+                "SMTP_USERNAME and SMTP_PASSWORD are required for production/staging environments"
             )
         
         if not (self.SMTP_USE_TLS or self.SMTP_USE_SSL):

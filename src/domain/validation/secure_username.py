@@ -15,7 +15,7 @@ from src.domain.validation.input_sanitizer import (
     ValidationResult,
     ValidationSeverity
 )
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -97,7 +97,7 @@ class SecureUsername:
         # Check if validation passed security requirements
         if not validation_result.is_valid:
             # Log security violation for monitoring
-            logger.security_warning(
+            logger.warning(
                 "Username validation failed with security violations",
                 original_username_length=len(self.value),
                 risk_score=validation_result.risk_score,
@@ -155,7 +155,7 @@ class SecureUsername:
                     blocked_patterns=["system_reserved"]
                 )
                 
-                logger.security_warning(
+                logger.warning(
                     "Attempt to use reserved system username",
                     username=username.mask_for_logging(),
                     risk_score=90

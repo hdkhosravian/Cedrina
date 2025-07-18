@@ -24,11 +24,7 @@ def test_server_startup():
     try:
         with TestClient(app) as client:
             response = client.get("/api/v1/health", headers={"Authorization": "Bearer fake-token"})
-            assert response.status_code in [
-                200,
-                401,
-                403,
-            ], f"Unexpected status code: {response.status_code}"
+            assert response.status_code == 401, f"Expected 401 for invalid token, got {response.status_code}"
     except RuntimeError as e:
         pytest.fail(f"Server startup failed: {e}")
 
@@ -50,13 +46,8 @@ async def test_server_startup_alternative():
     # Assuming there's a root endpoint or a simple endpoint to test
     try:
         response = client.get("/api/v1/health", headers={"Authorization": "Bearer fake-token"})
-        # We don't check for 200 specifically, as it might return 401/403 due to auth,
-        # but we confirm the app didn't crash on startup
-        assert response.status_code in [
-            200,
-            401,
-            403,
-        ], f"Unexpected status code: {response.status_code}"
+        # We expect 401 for invalid token
+        assert response.status_code == 401, f"Expected 401 for invalid token, got {response.status_code}"
     except Exception as e:
         pytest.fail(f"Server startup test failed with exception: {e!s}")
     finally:

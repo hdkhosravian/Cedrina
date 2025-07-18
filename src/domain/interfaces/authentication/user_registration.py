@@ -6,7 +6,7 @@ logic for user registration operations.
 
 Key DDD Principles Applied:
 - Single Responsibility: Handles only user registration logic
-- Domain Value Objects: Uses Username, Email, and Password value objects
+- Domain Value Objects: Uses Username, Email, Password, and SecurityContext value objects
 - Domain Events: Publishes UserRegistered event
 - Ubiquitous Language: Method names reflect business concepts
 """
@@ -18,6 +18,7 @@ from src.domain.entities.user import Role, User
 from src.domain.value_objects.email import Email
 from src.domain.value_objects.password import Password
 from src.domain.value_objects.username import Username
+from src.domain.value_objects.security_context import SecurityContext
 
 
 class IUserRegistrationService(ABC):
@@ -30,9 +31,10 @@ class IUserRegistrationService(ABC):
     
     DDD Principles:
     - Single Responsibility: Handles only user registration logic
-    - Domain Value Objects: Uses Username, Email, and Password value objects
+    - Domain Value Objects: Uses Username, Email, Password, and SecurityContext value objects
     - Domain Events: Publishes UserRegistered event
     - Ubiquitous Language: Method names reflect business concepts
+    - Fail-Safe Security: Implements secure user creation and audit trails
     """
 
     @abstractmethod
@@ -41,22 +43,26 @@ class IUserRegistrationService(ABC):
         username: Username,
         email: Email,
         password: Password,
+        security_context: SecurityContext,
         language: str = "en",
-        correlation_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
         role: Optional[Role] = None,
     ) -> User:
         """Creates and persists a new user.
+
+        This method ensures secure user registration by:
+        1. Validating all input value objects
+        2. Checking username and email availability
+        3. Securely hashing the password
+        4. Creating the user entity with proper defaults
+        5. Publishing UserRegistered domain event
+        6. Recording security context for audit trails
 
         Args:
             username: The desired `Username` value object.
             email: The user's `Email` value object.
             password: The `Password` value object for the new account.
+            security_context: Validated security context for audit trails.
             language: The language for any communication (e.g., welcome email).
-            correlation_id: An optional ID for tracing the request.
-            user_agent: The user agent of the client for auditing.
-            ip_address: The IP address of the client for auditing.
             role: The `Role` to assign to the new user. Defaults to the
                 standard user role if not provided.
 
@@ -65,6 +71,7 @@ class IUserRegistrationService(ABC):
 
         Raises:
             DuplicateUserError: If the chosen username or email is already in use.
+            ValidationError: If security context is invalid.
         """
         raise NotImplementedError
 

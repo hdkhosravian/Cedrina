@@ -191,3 +191,15 @@ def create_db_and_tables() -> None:
         execution_time=execution_time,
         tables=list(SQLModel.metadata.tables.keys()),
     )
+
+def drop_db_and_tables() -> None:
+    """Drops all database tables with logging."""
+    start_time = time.time()
+    SQLModel.metadata.drop_all(engine)
+    execution_time = time.time() - start_time
+    logger.info(
+        "database_tables_dropped",
+        execution_time=execution_time,
+        tables=list(SQLModel.metadata.tables.keys()),
+    )
+

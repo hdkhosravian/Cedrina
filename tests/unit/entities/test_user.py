@@ -16,7 +16,7 @@ def test_validate_username_invalid_characters():
     """Test that a username with invalid characters raises a ValueError with translated message."""
     username = "test@user!"
     with pytest.raises(
-        ValueError, match="Username must contain only letters, numbers, underscores, or hyphens"
+        ValueError, match="Username can only contain alphanumeric characters, underscores, or hyphens"
     ):
         User.validate_username(username)
 

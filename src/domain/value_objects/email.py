@@ -78,6 +78,11 @@ class Email:
         """Validates the format of the email address using a regex pattern."""
         if not self.EMAIL_PATTERN.match(value):
             raise ValueError("Invalid email format.")
+        
+        # Additional validation: prevent consecutive dots in local part
+        local_part = value.split("@")[0]
+        if ".." in local_part:
+            raise ValueError("Invalid email format.")
 
     def _validate_domain(self, value: str) -> None:
         """Validates the domain part of the email address."""

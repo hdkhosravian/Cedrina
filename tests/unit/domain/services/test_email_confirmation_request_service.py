@@ -5,7 +5,7 @@ from src.domain.entities.user import User
 from src.domain.services.email_confirmation.email_confirmation_request_service import (
     EmailConfirmationRequestService,
 )
-from src.core.exceptions import EmailServiceError
+from src.common.exceptions import EmailServiceError
 from src.domain.value_objects.confirmation_token import ConfirmationToken
 
 
@@ -32,9 +32,20 @@ async def test_send_confirmation_email(service, user):
     result = await service.send_confirmation_email(user, "en")
 
     assert result is True
-    service._token_service.generate_token.assert_called_once_with(user)
+    # Check that generate_token was called with user and security_context
+    service._token_service.generate_token.assert_called_once()
+    call_args = service._token_service.generate_token.call_args
+    assert call_args[0][0] == user  # First argument should be user
+    assert len(call_args[0]) == 2  # Should have user and security_context
+    
     service._user_repository.save.assert_called_once_with(user)
-    service._email_service.send_confirmation_email.assert_called_once_with(user, token_obj, "en")
+    
+    # Check that send_confirmation_email was called with user, token, security_context, and language
+    service._email_service.send_confirmation_email.assert_called_once()
+    email_call_args = service._email_service.send_confirmation_email.call_args
+    assert email_call_args[0][0] == user  # First argument should be user
+    assert email_call_args[0][1] == token_obj  # Second argument should be token
+    assert len(email_call_args[0]) == 4  # Should have user, token, security_context, and language
 
 
 @pytest.mark.asyncio

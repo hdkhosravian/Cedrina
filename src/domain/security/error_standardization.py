@@ -37,7 +37,7 @@ import hmac
 import secrets
 
 from src.core.config.settings import settings
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 

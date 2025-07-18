@@ -127,7 +127,7 @@ def user_scenarios():
         "new_user": {
             "username": "new_user_123",
             "email": "newuser123@example.com",
-            "password": "SecurePassword123!",
+            "password": "MyStr0ng#P@ssw0rd",
             "tier": "free",
         },
         "premium_user": {

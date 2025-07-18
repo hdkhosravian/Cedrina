@@ -4,14 +4,15 @@ from typing import Optional
 
 import structlog
 
-from src.core.exceptions import EmailServiceError
+from src.common.exceptions import EmailServiceError
 from src.domain.entities.user import User
 from src.domain.interfaces import (
     IEmailConfirmationTokenService,
     IEmailConfirmationEmailService,
     IUserRepository,
 )
-from src.utils.i18n import get_translated_message
+from src.domain.value_objects.security_context import SecurityContext
+from src.common.i18n import get_translated_message
 
 logger = structlog.get_logger(__name__)
 
@@ -40,11 +41,17 @@ class EmailConfirmationRequestService:
         Returns:
             ``True`` if the email was queued successfully, ``False`` otherwise.
         """
-
-        token = await self._token_service.generate_token(user)
+        # Create security context for token generation
+        security_context = SecurityContext.create_for_request(
+            client_ip="127.0.0.1",
+            user_agent="system",
+            correlation_id=""
+        )
+        
+        token = await self._token_service.generate_token(user, security_context)
         await self._user_repository.save(user)
         try:
-            await self._email_service.send_confirmation_email(user, token, language)
+            await self._email_service.send_confirmation_email(user, token, security_context, language)
             return True
         except EmailServiceError as e:
             logger.error("Confirmation email sending failed", error=str(e))

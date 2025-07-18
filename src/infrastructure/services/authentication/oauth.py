@@ -6,19 +6,20 @@ from authlib.integrations.starlette_client import OAuth
 from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
+import structlog
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from src.core.config.settings import settings
-from src.core.exceptions import AuthenticationError
+from src.common.exceptions import AuthenticationError
 from src.domain.entities.oauth_profile import OAuthProfile, Provider
 from src.domain.entities.user import Role, User
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+from src.infrastructure.services.base_service import BaseInfrastructureService
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
-class OAuthService:
+class OAuthService(BaseInfrastructureService):
     """Service for handling OAuth 2.0 authentication with external providers.
 
     Supports Google, Microsoft, and Facebook OAuth flows, integrating with PostgreSQL
@@ -34,6 +35,12 @@ class OAuthService:
     """
 
     def __init__(self, db_session: AsyncSession):
+        super().__init__(
+            service_name="OAuthService",
+            providers=["google", "microsoft", "facebook"],
+            encryption_algorithm="Fernet_AES_128_CBC_HMAC_SHA256"
+        )
+        
         self.db_session = db_session
         self.oauth = OAuth()
         # Initialise Fernet with database encryption key. If the configured key
@@ -42,8 +49,9 @@ class OAuthService:
             pgcrypto_key = settings.PGCRYPTO_KEY.get_secret_value().encode()
             self.fernet = Fernet(pgcrypto_key)
         except Exception:  # pragma: no cover – logging & safe-fallback
-            logger.warning(
-                "Invalid PGCRYPTO_KEY provided – falling back to generated key for Fernet."
+            self._log_warning(
+                operation="initialize",
+                message="Invalid PGCRYPTO_KEY provided – falling back to generated key for Fernet."
             )
             self.fernet = Fernet(Fernet.generate_key())
         self._configure_oauth()

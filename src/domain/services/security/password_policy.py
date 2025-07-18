@@ -7,8 +7,8 @@ from src.core.config.settings import (
     PASSWORD_REQUIRE_SPECIAL_CHAR,
     PASSWORD_REQUIRE_UPPERCASE,
 )
-from src.core.exceptions import PasswordPolicyError
-from src.utils.i18n import get_translated_message
+from src.common.exceptions import PasswordPolicyError
+from src.common.i18n import get_translated_message
 
 
 class PasswordPolicyValidator:

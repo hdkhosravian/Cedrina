@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.exceptions import PermissionError
+from src.common.exceptions import PermissionError
 from src.domain.entities.user import Role, User
 from src.permissions.dependencies import check_permission
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 
 # Mock Request class
@@ -183,10 +183,18 @@ async def test_permission_denied():
 
 @pytest.mark.asyncio
 async def test_user_with_no_role():
-    """Test that PermissionError is raised if the user has no role."""
+    """Test that PermissionError is raised if the user has no role.
+    
+    Note: In production, users always have a role (defaults to USER), but this test
+    simulates edge cases where role validation might fail by using a mock user object.
+    """
     # Arrange
     request = MockRequest()
-    mock_user = User(role=None)
+    # Create a mock user object that can have None role (bypassing Pydantic validation)
+    mock_user = MagicMock()
+    mock_user.role = None
+    mock_user.id = 1
+    
     mock_enforcer = MockEnforcer(enforce_result=True)  # Enforcer result shouldn't matter
     dependency = check_permission("/test", "read")
 

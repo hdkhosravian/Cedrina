@@ -1,27 +1,34 @@
-from __future__ import annotations
+"""Core exception classes for the Cedrina application.
 
-"""Centralized, structured exception hierarchy for Cedrina.
+This module defines all custom exceptions used throughout the application,
+following a hierarchical structure that maps to appropriate HTTP status codes.
 
-This module defines a clear and comprehensive hierarchy of custom exceptions
-for the application. Each exception is a slotted dataclass, ensuring they are
-lightweight and efficient. They carry a machine-readable `code` for programmatic
-error handling and a human-readable `message` for logging and user feedback.
+Exception Hierarchy:
+- CedrinaError: Base exception for all application errors
+  - AuthenticationError: Authentication and authorization failures (401/403)
+  - ValidationError: Data validation failures (400/422)
+  - DatabaseError: Database interaction failures (500)
+  - EmailServiceError: Email service failures (500)
+  - RateLimitError: Rate limiting violations (429)
 
-The hierarchy is designed to:
-- Provide clear, specific errors for different failure scenarios.
-- Support internationalization (i18n) for user-facing messages.
-- Map cleanly to HTTP status codes in the API layer.
-- Offer a consistent structure for logging and monitoring.
+Each exception includes:
+- A human-readable message suitable for logging and user display
+- A machine-readable error code for programmatic handling
+- Proper inheritance hierarchy for consistent error handling
+
+Security Considerations:
+- Generic error messages to prevent information leakage
+- Structured error codes for monitoring and debugging
+- Proper HTTP status code mapping for API responses
 """
 
 from dataclasses import dataclass
 from typing import Final
 
-from src.utils.i18n import get_translated_message
-
 __all__: Final = [
     "CedrinaError",
     "AuthenticationError",
+    "SecurityViolationError",
     "DatabaseError",
     "UserAlreadyExistsError",
     "InvalidCredentialsError",
@@ -100,6 +107,18 @@ class InvalidCredentialsError(AuthenticationError):
     """
 
     def __init__(self, message: str, code: str = "invalid_credentials"):
+        super().__init__(message, code)
+
+
+class SecurityViolationError(AuthenticationError):
+    """Raised when a security violation is detected.
+
+    This exception indicates that a serious security threat has been detected,
+    such as token reuse, compromised families, or other security incidents.
+    It typically maps to a `401 Unauthorized` or `403 Forbidden` HTTP status.
+    """
+
+    def __init__(self, message: str, code: str = "security_violation"):
         super().__init__(message, code)
 
 
@@ -224,7 +243,7 @@ class RateLimitError(CedrinaError):
 
     def __init__(self, message: str | None = None, code: str = "rate_limit_exceeded"):
         if message is None:
-            message = get_translated_message("rate_limit_exceeded", "en")
+            message = "Rate limit exceeded. Please try again later."
         super().__init__(message, code)
 
 

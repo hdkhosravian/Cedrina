@@ -14,7 +14,7 @@ class AuthResponse(BaseModel):
     """Response returned by register & login endpoints."""
 
     user: UserOut
-    tokens: TokenPair
+    tokens: Optional[TokenPair] = None
 
 
 class OAuthAuthResponse(BaseModel):

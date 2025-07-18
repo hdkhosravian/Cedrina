@@ -4,14 +4,13 @@ This module handles the configuration and registration of all middleware
 components including CORS, rate limiting, and language handling.
 """
 
-import i18n
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
 from src.core.config.settings import settings
 from src.core.rate_limiting.ratelimiter import get_limiter
-from src.utils.i18n import get_request_language
+from src.common.i18n import extract_language_from_request
 
 
 def configure_middleware(app: FastAPI) -> None:
@@ -24,7 +23,13 @@ def configure_middleware(app: FastAPI) -> None:
     # This must be done before adding the SlowAPIMiddleware
     app.state.limiter = get_limiter()
     
-    # CORS middleware configuration
+    # Language middleware (first for request preprocessing)
+    app.middleware("http")(set_language_middleware)
+
+    # Rate limiting middleware (early to block bad requests quickly)
+    app.add_middleware(SlowAPIMiddleware)
+    
+    # CORS middleware configuration (last for response headers)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
@@ -32,12 +37,6 @@ def configure_middleware(app: FastAPI) -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # Rate limiting middleware
-    app.add_middleware(SlowAPIMiddleware)
-
-    # Language middleware
-    app.middleware("http")(set_language_middleware)
 
 
 async def set_language_middleware(request: Request, call_next):
@@ -55,8 +54,8 @@ async def set_language_middleware(request: Request, call_next):
     Returns:
         Response: The response with language headers
     """
-    lang = get_request_language(request)
-    i18n.set("locale", lang)
+    # Extract language from request for I18N
+    lang = extract_language_from_request(request)
     request.state.language = lang
     response = await call_next(request)
     response.headers["Content-Language"] = lang

@@ -13,7 +13,8 @@ from src.infrastructure.dependency_injection.auth_dependencies import (
     get_error_classification_service,
 )
 from src.adapters.api.v1.auth.schemas import ForgotPasswordRequest, MessageResponse
-from src.core.exceptions import (
+from src.adapters.api.v1.auth.utils import handle_authentication_error, setup_request_context
+from src.common.exceptions import (
     AuthenticationError,
     EmailServiceError,
     ForgotPasswordError,
@@ -28,7 +29,8 @@ from src.domain.security.logging_service import secure_logging_service
 from src.domain.services.password_reset.password_reset_request_service import (
     PasswordResetRequestService,
 )
-from src.utils.i18n import get_request_language, get_translated_message
+from src.common.i18n import get_request_language, get_translated_message
+from src.common.i18n import extract_language_from_request
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -58,20 +60,9 @@ async def forgot_password(
     Always returns success to prevent email enumeration.
     Rate limited to 3 requests per hour.
     """
-    # Generate correlation ID for request tracking
-    correlation_id = str(uuid.uuid4())
-    
-    # Extract security context
-    client_ip = request.client.host or "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    # Create structured logger with correlation context and security information
-    request_logger = logger.bind(
-        correlation_id=correlation_id,
-        client_ip=secure_logging_service.mask_ip_address(client_ip),
-        user_agent=secure_logging_service.sanitize_user_agent(user_agent),
-        endpoint="forgot_password",
-        operation="password_reset_request"
+    # Set up request context using centralized utility
+    request_logger, correlation_id, client_ip, user_agent = setup_request_context(
+        request, "forgot_password", "password_reset_request"
     )
     
     request_logger.info(
@@ -82,72 +73,62 @@ async def forgot_password(
     
     try:
         # Extract language from request for I18N
-        language = get_request_language(request)
+        language = extract_language_from_request(request)
         
-        # Delegate to domain service for user lookup, token generation, and email delivery
+        # Delegate to domain service for password reset request
         await password_reset_service.request_password_reset(
             email=payload.email,
             language=language,
-            user_agent=user_agent,
             ip_address=client_ip,
+            user_agent=user_agent,
             correlation_id=correlation_id,
         )
         
         request_logger.info(
-            "Password reset request completed successfully",
+            "Password reset request processed successfully",
             email_masked=secure_logging_service.mask_email(payload.email),
             security_enhanced=True
         )
-
-        # Always return success to prevent email enumeration
+        
+        # Return localized success message
         success_message = get_translated_message("password_reset_email_sent", language)
         return MessageResponse(message=success_message)
-
-    except (ValueError, RateLimitExceededError, EmailServiceError, ForgotPasswordError, AuthenticationError) as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
         
-        # Classify error for consistent response format
-        classified_error = error_classification_service.classify_error(e)
-        
-        # Log the error with security context
+    except EmailServiceError as e:
+        # Log email service error for monitoring but return success to prevent enumeration
         request_logger.warning(
-            "Password reset request failed",
-            error_type=type(classified_error).__name__,
-            error_message=str(classified_error),
+            "Email service error during password reset request",
+            error_message=str(e),
             email_masked=secure_logging_service.mask_email(payload.email),
             security_enhanced=True
         )
         
-        # Return success for email errors to prevent information leakage
-        if isinstance(e, EmailServiceError):
-            success_message = get_translated_message("password_reset_email_sent", language)
-            return MessageResponse(message=success_message)
+        # Return success message to prevent email enumeration attacks
+        language = extract_language_from_request(request)
+        success_message = get_translated_message("password_reset_email_sent", language)
+        return MessageResponse(message=success_message)
         
-        # Re-raise for FastAPI exception handlers
-        raise classified_error
-        
-    except Exception as e:
-        # Extract language from request for I18N
-        language = get_request_language(request)
-        
-        # Log unexpected errors for debugging
-        request_logger.error(
-            "Password reset request failed - unexpected error",
-            error=str(e),
-            error_type=type(e).__name__,
-            email_masked=secure_logging_service.mask_email(payload.email),
-            security_enhanced=True
-        )
-        
-        # Create standardized error response
-        standardized_response = await error_standardization_service.create_standardized_response(
-            error_type="internal_error",
-            actual_error=str(e),
+    except (RateLimitExceededError, ForgotPasswordError) as e:
+        # Known domain errors should be handled by the error handler
+        context_info = {
+            "email_masked": secure_logging_service.mask_email(payload.email)
+        }
+        raise await handle_authentication_error(
+            error=e,
+            request_logger=request_logger,
+            error_classification_service=error_classification_service,
+            request=request,
             correlation_id=correlation_id,
-            language=language
+            context_info=context_info
         )
-        
-        # Return success to prevent information leakage
+    except Exception as e:
+        # Log unexpected errors and return generic success to prevent information leakage
+        request_logger.error(
+            "Unexpected error during password reset request",
+            error_message=str(e),
+            email_masked=secure_logging_service.mask_email(payload.email),
+            security_enhanced=True
+        )
+        language = extract_language_from_request(request)
         success_message = get_translated_message("password_reset_email_sent", language)
         return MessageResponse(message=success_message) 

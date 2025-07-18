@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import ClassVar
 
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
+from src.common.exceptions import TokenFormatError
 
 
 @dataclass(frozen=True)
@@ -60,10 +61,10 @@ class ResetToken:
         """Validate enhanced token format requirements.
         
         Raises:
-            ValueError: If token format is invalid
+            TokenFormatError: If token format is invalid
         """
         if not self.value:
-            raise ValueError(get_translated_message("token_cannot_be_empty"))
+            raise TokenFormatError(get_translated_message("token_cannot_be_empty"))
         
         # Validate character diversity for security first (more specific error)
         has_uppercase = any(c in self.UPPERCASE_CHARS for c in self.value)
@@ -72,17 +73,17 @@ class ResetToken:
         has_special = any(c in self.SPECIAL_CHARS for c in self.value)
         
         if not has_uppercase:
-            raise ValueError(get_translated_message("token_must_contain_uppercase"))
+            raise TokenFormatError(get_translated_message("token_must_contain_uppercase"))
         if not has_lowercase:
-            raise ValueError(get_translated_message("token_must_contain_lowercase"))
+            raise TokenFormatError(get_translated_message("token_must_contain_lowercase"))
         if not has_digit:
-            raise ValueError(get_translated_message("token_must_contain_digits"))
+            raise TokenFormatError(get_translated_message("token_must_contain_digits"))
         if not has_special:
-            raise ValueError(get_translated_message("token_must_contain_special_chars"))
+            raise TokenFormatError(get_translated_message("token_must_contain_special_chars"))
         
         # Validate length after character diversity
         if len(self.value) < self.MIN_TOKEN_LENGTH or len(self.value) > self.MAX_TOKEN_LENGTH:
-            raise ValueError(get_translated_message("token_length_invalid").format(
+            raise TokenFormatError(get_translated_message("token_length_invalid").format(
                 min_length=self.MIN_TOKEN_LENGTH,
                 max_length=self.MAX_TOKEN_LENGTH
             ))

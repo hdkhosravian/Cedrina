@@ -109,8 +109,6 @@ msgstr "Invalid ID token"
 msgid "invalid_id_token_issuer"
 msgstr "Invalid ID token issuer"
 
-# Newly added keys (2025-06-23)
-
 msgid "password_no_special_char"
 msgstr "Password must contain at least one special character"
 
@@ -138,8 +136,6 @@ msgstr "Logout failed due to internal error"
 msgid "logout_successful"
 msgstr "Logged out successfully"
 
-# Change password functionality (2025-06-28)
-
 msgid "user_not_found"
 msgstr "User not found"
 
@@ -160,6 +156,30 @@ msgstr "Password change service is temporarily unavailable"
 
 msgid "missing_authorization_header"
 msgstr "Authorization header is missing"
+
+msgid "invalid_authorization_header"
+msgstr "Invalid Authorization header format. Expected: Bearer <token>"
+
+msgid "missing_refresh_token_header"
+msgstr "X-Refresh-Token header is missing"
+
+msgid "invalid_token_format"
+msgstr "Invalid token format"
+
+msgid "validate_token_pair_infrastructure_error"
+msgstr "Token validation service is temporarily unavailable"
+
+msgid "token_ownership_mismatch"
+msgstr "Token ownership validation failed"
+
+msgid "token_pair_mismatch"
+msgstr "Token pair mismatch detected"
+
+msgid "logout_failed_internal_error"
+msgstr "Logout failed due to internal error"
+
+msgid "revoke_refresh_token_infrastructure_error"
+msgstr "Refresh token revocation service is temporarily unavailable"
 
 
 msgid "password_reset_email_subject"
@@ -186,8 +206,6 @@ msgstr "Password reset failed"
 msgid "password_too_weak"
 msgstr "Password does not meet security requirements"
 
-# Session management security (2025-01-27)
-
 msgid "session_creation_timeout"
 msgstr "Session creation timed out due to consistency issues"
 
@@ -197,7 +215,17 @@ msgstr "Session creation failed due to an internal error"
 msgid "session_limit_exceeded"
 msgstr "Maximum number of concurrent sessions exceeded"
 
-# Generic error messages for preventing information disclosure (2025-01-27)
+msgid "token_creation_failed"
+msgstr "Token creation failed"
+
+msgid "token_refresh_failed"
+msgstr "Token refresh failed"
+
+msgid "insufficient_permissions"
+msgstr "Insufficient permissions"
+
+msgid "token_creation_infrastructure_error"
+msgstr "Token creation infrastructure error"
 
 msgid "invalid_credentials_generic"
 msgstr "Invalid credentials provided"
@@ -210,6 +238,24 @@ msgstr "The provided input is not valid"
 
 msgid "service_temporarily_unavailable"
 msgstr "Service is temporarily unavailable"
+
+msgid "token_validation_failed"
+msgstr "Token validation failed"
+
+msgid "token_validation_infrastructure_error"
+msgstr "Token validation infrastructure error"
+
+msgid "validate_access_token_infrastructure_error"
+msgstr "Invalid token"
+
+msgid "session_revocation_failed"
+msgstr "Session revocation failed"
+
+msgid "token_family_not_found"
+msgstr "Token family not found"
+
+msgid "invalid_token_family"
+msgstr "Invalid token family"
 
 msgid "too_many_requests_generic"
 msgstr "Too many requests. Please try again later"
@@ -237,8 +283,6 @@ msgstr "Registration data format is invalid"
 
 msgid "registration_service_unavailable"
 msgstr "Registration service is temporarily unavailable"
-
-# Enhanced security logging and error standardization (2025-01-27)
 
 msgid "password_reset_service_unavailable"
 msgstr "Password reset service is temporarily unavailable"
@@ -303,8 +347,6 @@ msgstr "Enhanced password reset is active"
 msgid "enhanced_logout_active"
 msgstr "Enhanced logout is active"
 
-# Enhanced Token Security (2025-06-30)
-
 msgid "token_cannot_be_empty"
 msgstr "Token cannot be empty"
 
@@ -342,10 +384,11 @@ msgstr "Please confirm your email before logging in"
 msgid "email_confirmed_success"
 msgstr "Email confirmed successfully"
 
-# Authentication account lockout and expiration (2025-01-27)
-
 msgid "account_locked"
 msgstr "Account is locked due to too many failed login attempts. Please try again later or contact support."
 
-msgid "expired_credentials"
-msgstr "Your credentials have expired. Please reset your password to continue."
+msgid "password_empty"
+msgstr "Password cannot be empty"
+
+msgid "password_too_long"
+msgstr "Password must be no more than {max_length} characters long"

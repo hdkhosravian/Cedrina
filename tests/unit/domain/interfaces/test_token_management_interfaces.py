@@ -116,7 +116,7 @@ class TestTokenManagementInterfaces:
         """Test that each interface follows the Single Responsibility Principle."""
         # ITokenService - only JWT token operations
         token_methods = ITokenService.__abstractmethods__
-        assert len(token_methods) == 7  # All token-related methods
+        assert len(token_methods) == 10  # All token-related methods (including revoke_refresh_token_by_jti and revoke_token_family)
         assert all('token' in method or 'access' in method or 'refresh' in method 
                   for method in token_methods)
         

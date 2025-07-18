@@ -28,9 +28,9 @@ import casbin
 from fastapi import Depends, Request
 
 from src.core.dependencies.auth import get_current_user
-from src.core.exceptions import PermissionError
+from src.common.exceptions import PermissionError
 from src.domain.entities.user import User
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 from .enforcer import get_enforcer
 

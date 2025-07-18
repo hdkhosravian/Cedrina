@@ -13,7 +13,7 @@ from src.core.config.settings import settings
 from src.core.dependencies.auth import get_current_admin_user, get_current_user
 from src.core.rate_limiting.ratelimiter import get_limiter
 from src.domain.entities.user import Role, User
-from src.infrastructure.services.authentication.token import TokenService
+from src.infrastructure.services.authentication.domain_token_service import DomainTokenService
 from src.infrastructure.database import get_db
 from src.infrastructure.redis import get_redis
 from src.main import app as main_app  # Import with an alias to avoid conflicts
@@ -60,7 +60,7 @@ def client(app, db_session, redis_client):
 
 @pytest_asyncio.fixture
 async def token_service(mocker):
-    mock = mocker.AsyncMock(spec=TokenService)
+    mock = mocker.AsyncMock(spec=DomainTokenService)
     # Create a properly formatted JWT token for testing
     payload = {
         "sub": "1",

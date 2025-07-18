@@ -5,10 +5,37 @@ ensuring password strength requirements are enforced consistently across the dom
 """
 
 import re
+import bcrypt
 from dataclasses import dataclass
 from typing import ClassVar, Optional
+from src.common.exceptions import PasswordPolicyError
+from src.common.i18n import get_translated_message
 
-from src.utils.security import hash_password, verify_password
+
+def _hash_password(password: str) -> str:
+    """Hash a password using bcrypt.
+    
+    Args:
+        password: Plain text password
+        
+    Returns:
+        str: Hashed password
+    """
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+
+def _verify_password(password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash.
+    
+    Args:
+        password: Plain text password to verify
+        hashed_password: Stored password hash
+        
+    Returns:
+        bool: True if password matches, False otherwise
+    """
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 @dataclass(frozen=True)
@@ -73,7 +100,7 @@ class LoginPassword:
             - Returns False for any invalid hash format (no information disclosure)
         """
         try:
-            return verify_password(self.value, hashed_password)
+            return _verify_password(self.value, hashed_password)
         except Exception:
             # Return False for any invalid hash format or verification error
             # This prevents information disclosure through error messages
@@ -102,6 +129,7 @@ class Password:
     """
     
     value: str
+    language: str = "en"
     
     # Security constraints as class constants
     MIN_LENGTH: ClassVar[int] = 8
@@ -120,33 +148,33 @@ class Password:
         """Validate password against all security requirements.
         
         Raises:
-            ValueError: If password doesn't meet security requirements
+            PasswordPolicyError: If password doesn't meet security requirements
         """
         if not self.value:
-            raise ValueError("Password cannot be empty")
+            raise PasswordPolicyError(get_translated_message("password_empty", self.language))
         
         if len(self.value) < self.MIN_LENGTH:
-            raise ValueError(f"Password must be at least {self.MIN_LENGTH} characters long")
+            raise PasswordPolicyError(get_translated_message("password_too_short", self.language).format(length=self.MIN_LENGTH))
         
         if len(self.value) > self.MAX_LENGTH:
-            raise ValueError(f"Password must not exceed {self.MAX_LENGTH} characters")
+            raise PasswordPolicyError(get_translated_message("password_too_long", self.language).format(max_length=self.MAX_LENGTH))
         
         # Check character requirements
         if not re.search(r"[A-Z]", self.value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            raise PasswordPolicyError(get_translated_message("password_no_uppercase", self.language))
         
         if not re.search(r"[a-z]", self.value):
-            raise ValueError("Password must contain at least one lowercase letter")
+            raise PasswordPolicyError(get_translated_message("password_no_lowercase", self.language))
         
         if not re.search(r"\d", self.value):
-            raise ValueError("Password must contain at least one digit")
+            raise PasswordPolicyError(get_translated_message("password_no_digit", self.language))
         
         if not any(char in self.SPECIAL_CHARS for char in self.value):
-            raise ValueError("Password must contain at least one special character")
+            raise PasswordPolicyError(get_translated_message("password_no_special_char", self.language))
         
         # Check for common weak patterns
         if self._contains_weak_patterns():
-            raise ValueError("Password contains common weak patterns")
+            raise PasswordPolicyError(get_translated_message("password_too_weak", self.language))
     
     def _contains_weak_patterns(self) -> bool:
         """Check for common weak password patterns.
@@ -193,7 +221,7 @@ class Password:
             >>> is_valid = password.verify_against_hash(hashed)
         """
         try:
-            return verify_password(self.value, hashed_password)
+            return _verify_password(self.value, hashed_password)
         except Exception:
             # Return False for any invalid hash format or verification error
             # This prevents information disclosure through error messages
@@ -201,12 +229,13 @@ class Password:
             return False
     
     def to_hashed(self) -> 'HashedPassword':
-        """Convert to hashed password.
+        """Convert password to hashed format for secure storage.
         
         Returns:
-            HashedPassword: Securely hashed version of this password
+            HashedPassword: Securely hashed password value object
         """
-        return HashedPassword.from_plain_password(self)
+        hashed_value = _hash_password(self.value)
+        return HashedPassword(value=hashed_value)
 
 
 @dataclass(frozen=True)
@@ -228,27 +257,29 @@ class HashedPassword:
         if not self.value:
             raise ValueError("Hashed password cannot be empty")
         
-        # Support both encrypted and unencrypted bcrypt hashes for migration
-        if self.is_encrypted():
-            # For encrypted hashes, validate the format more thoroughly
-            if not self.value.startswith("enc_v1:"):
-                raise ValueError("Invalid encrypted password format")
-            # Ensure there's actual data after the prefix
-            if len(self.value) <= 7 or self.value == "enc_v1:":  # "enc_v1:" is 7 characters
-                raise ValueError("Invalid encrypted password format")
-        else:
-            # For unencrypted bcrypt hashes, validate full format
-            if not self.value.startswith("$2b$"):
-                raise ValueError("Invalid hashed password format")
+        # Basic bcrypt or encrypted format validation
+        is_bcrypt = self.value.startswith("$2b$") and len(self.value) == 60
+        is_encrypted = self.value.startswith("enc_v1:") and len(self.value) > len("enc_v1:")
+
+        if not (is_bcrypt or is_encrypted):
+            raise ValueError("Invalid hashed password format")
+    
+    def verify_plain_password(self, plain_password: str) -> bool:
+        """Verify a plain password against this hash.
+        
+        Args:
+            plain_password: Plain text password to verify
             
-            if len(self.value) != 60:  # Standard bcrypt hash length
-                raise ValueError("Invalid hashed password length")
+        Returns:
+            bool: True if password matches the hash
+        """
+        return _verify_password(plain_password, self.value)
     
     def is_encrypted(self) -> bool:
-        """Check if this hashed password is encrypted.
+        """Check if this hash is encrypted (has enc_v1: prefix).
         
         Returns:
-            bool: True if the hash is encrypted (has enc_v1: prefix)
+            bool: True if hash is encrypted
         """
         return self.value.startswith("enc_v1:")
     
@@ -257,23 +288,23 @@ class HashedPassword:
         """Create hashed password from plain password.
         
         Args:
-            password: Plain password value object
+            password: Password value object
             
         Returns:
-            HashedPassword: Securely hashed password (unencrypted for compatibility)
+            HashedPassword: Hashed password
         """
-        hashed_value = hash_password(password.value)
+        hashed_value = _hash_password(password.value)
         return cls(value=hashed_value)
     
     @classmethod
     def from_hash(cls, hashed_value: str) -> 'HashedPassword':
-        """Create from existing hash (e.g., from database).
+        """Create hashed password from existing hash.
         
         Args:
-            hashed_value: Pre-hashed password string (encrypted or unencrypted)
+            hashed_value: Existing hash string
             
         Returns:
-            HashedPassword: Validated hashed password object
+            HashedPassword: Hashed password object
         """
         return cls(value=hashed_value)
 
@@ -304,7 +335,7 @@ class EncryptedPassword:
             raise ValueError("Encrypted password cannot be empty")
         
         if not self.encrypted_value.startswith("enc_v1:"):
-            raise ValueError("Invalid encrypted password format: must start with 'enc_v1:'")
+            raise ValueError("Invalid encrypted password format")
     
     @classmethod
     async def from_hashed_password(
@@ -315,54 +346,40 @@ class EncryptedPassword:
         """Create encrypted password from hashed password.
         
         Args:
-            hashed_password: Hashed password value object
-            encryption_service: Service to handle encryption
+            hashed_password: Hashed password to encrypt
+            encryption_service: Service for encryption
             
         Returns:
-            EncryptedPassword: Encrypted password for secure storage
-            
-        Raises:
-            EncryptionError: If encryption fails
+            EncryptedPassword: Encrypted password
         """
-        from src.domain.interfaces import IPasswordEncryptionService
-        
-        # If already encrypted, return as-is
         if hashed_password.is_encrypted():
             return cls(encrypted_value=hashed_password.value)
-        
-        # Encrypt the bcrypt hash
-        encrypted_value = await encryption_service.encrypt_password_hash(hashed_password.value)
+
+        encrypted_value = await encryption_service.encrypt(hashed_password.value)
         return cls(encrypted_value=encrypted_value)
     
     async def to_bcrypt_hash(
         self, 
         encryption_service: 'IPasswordEncryptionService'
     ) -> str:
-        """Decrypt to get the original bcrypt hash for verification.
+        """Decrypt to bcrypt hash for verification.
         
         Args:
-            encryption_service: Service to handle decryption
+            encryption_service: Service for decryption
             
         Returns:
-            str: Decrypted bcrypt hash for password verification
-            
-        Raises:
-            DecryptionError: If decryption fails
+            str: Decrypted bcrypt hash
         """
-        return await encryption_service.decrypt_password_hash(self.encrypted_value)
+        return await encryption_service.decrypt(self.encrypted_value)
     
     def get_storage_value(self) -> str:
-        """Get the value to store in the database.
+        """Get the value to store in database.
         
         Returns:
-            str: Encrypted value for database storage
+            str: Encrypted value for storage
         """
         return self.encrypted_value
     
     def __repr__(self) -> str:
-        """Return safe string representation without exposing sensitive data.
-        
-        Returns:
-            str: Safe representation for logging/debugging
-        """
-        return f"EncryptedPassword(encrypted=True, format='enc_v1')" 
+        """String representation for debugging."""
+        return f"EncryptedPassword(encrypted_value='{self.encrypted_value[:10]}...')" 

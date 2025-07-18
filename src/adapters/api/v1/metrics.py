@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from src.core.config.settings import settings
 from src.core.dependencies.auth import get_current_admin_user
 from src.core.metrics import metrics_collector
-from src.utils.i18n import get_translated_message
+from src.common.i18n import get_translated_message
 
 router = APIRouter()
 
