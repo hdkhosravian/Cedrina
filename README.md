@@ -320,6 +320,7 @@ make run-dev-local
 - **Defense-in-Depth**: Multiple security layers with encrypted storage
 - **Rate Limiting**: Sophisticated abuse prevention with multiple algorithms
 - **Session Management**: Database-only storage with activity tracking
+- [SECURITY TODO](docs/security/SECURITY_IMPROVEMENT_PLAN.md) - Security Update planning
 
 ## 📚 Documentation
 
