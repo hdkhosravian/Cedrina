@@ -33,11 +33,11 @@ from hypothesis import given, strategies as st
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import get_settings
+from src.core.config.settings import settings
 from src.domain.entities.role import Role
 from src.domain.entities.user import User
 from src.domain.services.security.policy import PolicyService
-from src.infrastructure.database.session import get_db_session
+from src.infrastructure.database.async_db import get_async_db_dependency
 from src.permissions.enforcer import get_enforcer
 
 

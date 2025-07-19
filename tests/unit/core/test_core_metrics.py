@@ -7,7 +7,7 @@ import pytest
 # Adjust sys.path to include src directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../src")))
 
-from core.metrics import MetricsCollector, record_metric
+from src.core.metrics import MetricsCollector, record_metric
 
 
 @pytest.fixture
@@ -133,7 +133,7 @@ def test_reset_metrics(collector, mocker):
 async def test_record_metric_decorator_database_success(mocker):
     """Test record_metric decorator for database operations with success."""
     collector = MetricsCollector()
-    mocker.patch("core.metrics.metrics_collector", collector)
+    mocker.patch("src.core.metrics.metrics_collector", collector)
 
     @record_metric("database")
     async def test_db_func():
@@ -152,7 +152,7 @@ async def test_record_metric_decorator_database_success(mocker):
 async def test_record_metric_decorator_database_failure(mocker):
     """Test record_metric decorator for database operations with failure."""
     collector = MetricsCollector()
-    mocker.patch("core.metrics.metrics_collector", collector)
+    mocker.patch("src.core.metrics.metrics_collector", collector)
 
     @record_metric("database")
     async def test_db_func():
@@ -171,7 +171,7 @@ async def test_record_metric_decorator_database_failure(mocker):
 async def test_record_metric_decorator_cache(mocker):
     """Test record_metric decorator for cache operations."""
     collector = MetricsCollector()
-    mocker.patch("core.metrics.metrics_collector", collector)
+    mocker.patch("src.core.metrics.metrics_collector", collector)
 
     @record_metric("cache")
     async def test_cache_func():
@@ -188,7 +188,7 @@ async def test_record_metric_decorator_cache(mocker):
 def test_record_metric_decorator_sync_database_success(mocker):
     """Test record_metric decorator for synchronous database operations with success."""
     collector = MetricsCollector()
-    mocker.patch("core.metrics.metrics_collector", collector)
+    mocker.patch("src.core.metrics.metrics_collector", collector)
 
     @record_metric("database")
     def test_db_func():

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Callable, Coroutine, Optional, TypeVar
 
-from core.logging import logger
+from src.core.logging import logger
 
 # Type variable for the decorated function's return value
 T = TypeVar("T")

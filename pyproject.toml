@@ -54,6 +54,7 @@ types-python-jose = "^3.3.4"
 types-passlib = "^1.7.7"
 pytest-mock = "^3.14.0"
 faker = "^37.4.0"
+hypothesis = "^6.136.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]  # Updated for Poetry 2.1.3

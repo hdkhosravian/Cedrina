@@ -34,6 +34,16 @@ class AppSettings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True
+    
+    # File Logging Configuration
+    ENABLE_FILE_LOGGING: bool = True
+    LOG_DIRECTORY: str = "./logs"
+    LOG_MAX_SIZE_MB: float = 100.0
+    LOG_MAX_FILES: int = 10
+    LOG_ROTATE_ON_STARTUP: bool = False
+    LOG_MAX_AGE_DAYS: int = 30
+    LOG_MAX_TOTAL_SIZE_GB: float = 10.0
+    LOG_CLEANUP_INTERVAL_HOURS: int = 24
 
     SECRET_KEY: str = Field(..., min_length=32)
     ALLOWED_ORIGINS: Union[str, List[str]] = Field(default="http://0.0.0.0:8000")
