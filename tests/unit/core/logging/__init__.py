@@ -1,0 +1,1 @@
+"""Test module for core logging functionality."""

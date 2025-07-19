@@ -2,8 +2,8 @@ import pytest
 from sqlalchemy.sql import text
 from sqlmodel import Session
 
-from core.config.settings import settings
-from infrastructure.database import check_database_health, engine
+from src.core.config.settings import settings
+from src.infrastructure.database import check_database_health, engine
 
 
 def test_database_connectivity():

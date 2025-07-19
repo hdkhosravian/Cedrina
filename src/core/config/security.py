@@ -149,6 +149,12 @@ class SecuritySettings(BaseSettings):
         description="Ensure timing consistency across multiple server instances"
     )
     
+    # Audit logging security
+    AUDIT_INTEGRITY_KEY: str = Field(
+        default="",
+        description="Key for HMAC-based audit log integrity protection (required for production)"
+    )
+    
     @field_validator('TIMING_FAST_MAX')
     @classmethod
     def validate_fast_timing(cls, v, info):

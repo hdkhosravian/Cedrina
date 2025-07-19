@@ -8,7 +8,7 @@ import pytest
 # Adjust sys.path to include src directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../src")))
 
-from core.circuit_breaker import CircuitBreaker, circuit_breaker
+from src.core.circuit_breaker import CircuitBreaker, circuit_breaker
 
 
 @pytest.mark.asyncio
