@@ -345,6 +345,7 @@ make run-dev-local
 
 ### **Development & Deployment**
 - [Development Guide](docs/development/README.md) - Development workflow and best practices
+- [Feature Development Framework](docs/development/feature-development.md) - Comprehensive enterprise feature implementation methodology
 - [API Reference](docs/reference/api-reference.md) - Complete API documentation
 - [Database Schema](docs/reference/database-schema.md) - Database schema reference
 - [Error Codes](docs/reference/error-codes.md) - Error handling reference
