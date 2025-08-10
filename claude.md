@@ -461,11 +461,9 @@ make test-cov                        # Tests with coverage
 - **Task**: Analyze and fix tests in `tests/unit/domain/entities/`.
 - **Steps**:
   1. Run `/agents test-suite-generator "Generate tests for entities"`; execute `pytest tests/unit/domain/entities/ --cov=src/domain/entities`.
-  2. Analyze failures with `/agents code-reviewer "Analyze test failures"` and Use correct agents.
+  2. Analyze failures with `/agents code-reviewer "Analyze test failures"`.
   3. Fix issues via `/agents code-refactoring-specialist "Refactor failing code"`.
   4. Check dependencies with `pydeps src/`.
   5. Run related tests (e.g., `tests/unit/domain/services/`) via `/agents test-suite-generator`.
   6. Validate 95%+ coverage with `pytest --cov`.
   7. Next TODO: Analyze `tests/unit/domain/services/` via `/agents project-orchestrator`.
-
-NOTE: Use agents in the process.
